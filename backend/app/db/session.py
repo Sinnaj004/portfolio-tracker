@@ -13,11 +13,3 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Davon erben später alle unsere Tabellen-Klassen
 Base = declarative_base()
-
-# Hilfsfunktion für FastAPI (Dependency Injection)
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()

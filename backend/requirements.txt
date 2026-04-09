@@ -5,3 +5,8 @@ psycopg2-binary
 pydantic-settings
 python-dotenv
 redis
+bcrypt==4.0.1
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+email-validator

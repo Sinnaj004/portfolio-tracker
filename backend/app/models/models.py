@@ -15,6 +15,8 @@ class User(Base):
     preferred_curency = Column(String, default="EUR")
     created_at = Column(DateTime, default=datetime.now)
 
+    portfolios = relationship("Portfolio", back_populates="owner", cascade="all, delete-orphan")
+
 class Portfolio(Base):
     __tablename__ = "portfolios"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -25,6 +27,7 @@ class Portfolio(Base):
 
     owner = relationship("User", back_populates="portfolios")
     items = relationship("PortfolioItem", back_populates="portfolio", cascade="all, delete-orphan")
+    transactions = relationship("Transaction", back_populates="portfolio", cascade="all, delete-orphan")
 
 class Asset(Base):
     __tablename__ = "assets"
