@@ -1,14 +1,12 @@
 from fastapi import FastAPI
-import os
+from .db.session import engine, Base
+from .models import models # Wichtig für die Registrierung der Models
+
+# Erstellt alle Tabellen in Postgres
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Portfolio Tracker API")
 
 @app.get("/")
-def read_root():
-    # Test: Liest er die Variable aus der .env?
-    db_name = os.getenv("POSTGRES_DB", "Nicht gefunden")
-    return {
-        "status": "online",
-        "database_connected_to": db_name,
-        "message": "Willkommen bei deinem Portfolio Tracker!"
-    }
+def health_check():
+    return {"status": "online", "database": "connected and initialized"}
