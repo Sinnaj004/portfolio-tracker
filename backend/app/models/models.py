@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Numeric, Integer
+from sqlalchemy import Column, String, Boolean, ForeignKey, DateTime, Numeric, Integer, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import uuid
@@ -28,6 +28,8 @@ class Portfolio(Base):
     owner = relationship("User", back_populates="portfolios")
     items = relationship("PortfolioItem", back_populates="portfolio", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="portfolio", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint('user_id', 'name', name='_user_portfolio_name_uc'),)
 
 class Asset(Base):
     __tablename__ = "assets"
