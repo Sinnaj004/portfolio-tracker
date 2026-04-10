@@ -46,3 +46,9 @@ class PortfolioItemOut(PortfolioItemBase):
     asset: AssetShort
 
     model_config = ConfigDict(from_attributes=True)
+
+class PortfolioItemSell(BaseModel):
+    quantity: Decimal = Field(..., gt=0, decimal_places=4)
+
+    class Config:
+        coerce_numbers_to_str = True
