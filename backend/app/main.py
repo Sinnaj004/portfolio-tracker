@@ -1,6 +1,7 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  # <-- NEU
 from .db.session import engine, Base
-from .models import models # Wichtig für die Registrierung der Models
+from .models import models
 from .api.v1 import auth, portfolios, portfolio_item
 from .schemas import portfolio
 
@@ -8,6 +9,16 @@ from .schemas import portfolio
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Portfolio Tracker API")
+
+# --- CORS KONFIGURATION (NEU) ---
+# Erlaubt deinem React-Frontend, auf die API zuzugreifen
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # URL deines Vite/React Frontends
+    allow_credentials=True,
+    allow_methods=["*"], # Erlaubt GET, POST, PUT, DELETE, etc.
+    allow_headers=["*"], # Erlaubt alle Header (wichtig für Auth-Tokens)
+)
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(portfolios.router, prefix="/api/v1/portfolio", tags=["Portfolio"])

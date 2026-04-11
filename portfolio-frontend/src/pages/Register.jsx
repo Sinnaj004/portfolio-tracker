@@ -5,7 +5,7 @@ export default function Register({ onSwitchToLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false); // War vorher nicht definiert!
+  const [isLoading, setIsLoading] = useState(false);
   const [success, setSuccess] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -28,7 +28,9 @@ export default function Register({ onSwitchToLogin }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/auth/register", {
+      // NUTZT JETZT DIE IP AUS DER DOCKER-COMPOSE
+      // Wichtig: /auth/register wird an http://192.168.178.42:8000/api/v1 angehängt
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, email, password }),
@@ -36,7 +38,6 @@ export default function Register({ onSwitchToLogin }) {
 
       if (!response.ok) {
         const data = await response.json();
-        // Hier fangen wir Backend-Fehler ab (z.B. Username schon vergeben)
         throw new Error(data.detail || 'Registrierung fehlgeschlagen.');
       }
 
@@ -46,7 +47,7 @@ export default function Register({ onSwitchToLogin }) {
     } catch (err) {
       setError(err.message);
     } finally {
-      setIsLoading(false); // Laden beenden, egal ob Erfolg oder Fehler
+      setIsLoading(false);
     }
   };
 
@@ -74,7 +75,6 @@ export default function Register({ onSwitchToLogin }) {
           <p className="text-slate-500 mt-2">Starte jetzt mit deinem Portfolio-Tracker</p>
         </div>
 
-        {/* Hier wird der Fehler angezeigt */}
         {error && (
           <div className="bg-rose-50 text-rose-600 p-4 rounded-xl mb-6 text-sm font-semibold border border-rose-100 animate-pulse">
             {error}

@@ -17,7 +17,9 @@ export default function Login({ onLoginSuccess, onSwitchToRegister }) {
     formData.append('password', password);
 
     try {
-      const response = await fetch("http://localhost:8000/api/v1/auth/login", {
+      // NUTZT JETZT DIE DYNAMISCHE URL AUS DER DOCKER-COMPOSE
+      // Wichtig: Wieder Backticks (``) verwenden!
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
@@ -67,7 +69,7 @@ export default function Login({ onLoginSuccess, onSwitchToRegister }) {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 outline-none transition-all"
-              placeholder="Deun Username"
+              placeholder="Dein Username"
               required
             />
           </div>

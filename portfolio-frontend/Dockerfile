@@ -14,4 +14,4 @@ COPY . .
 EXPOSE 5173
 
 # Vite muss im Network-Modus starten, damit Docker es nach außen reicht
-CMD ["npm", "run", "dev", "--", "--host"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

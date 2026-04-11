@@ -122,7 +122,7 @@ def get_all_portfolio_items(portfolio_id: UUID, db: Session = Depends(get_db), c
 
     return portfolio.items
 
-@router.get("/{portfolio_id/items/{item_id}", response_model=PortfolioItemOut, status_code=status.HTTP_200_OK)
+@router.get("/{portfolio_id}/items/{item_id}", response_model=PortfolioItemOut, status_code=status.HTTP_200_OK)
 def get_portfolio_item(portfolio_id: UUID, item_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     item = db.query(PortfolioItem).filter(PortfolioItem.id == item_id, Portfolio.id == portfolio_id, Portfolio.user_id == current_user.id).first()
 

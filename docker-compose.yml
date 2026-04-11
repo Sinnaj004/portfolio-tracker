@@ -36,7 +36,25 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
+    # host 0.0.0.0 ist hier bereits korrekt für Netzwerkzugriff
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # --- Frontend: React (Vite) ---
+  frontend:
+    build: ./portfolio-frontend
+    container_name: portfolio_frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./portfolio-frontend:/app
+      - /app/node_modules
+    environment:
+      # WICHTIG: Ersetze 192.168.xxx.xxx mit der IP deines Rechners!
+      - VITE_API_URL=http://192.168.178.42:8000/api/v1
+    depends_on:
+      - backend
+
+    command: npm run dev -- --host 0.0.0.0
 
 volumes:
   db_data:

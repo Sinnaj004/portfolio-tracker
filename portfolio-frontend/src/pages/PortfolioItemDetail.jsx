@@ -1,0 +1,172 @@
+import React, { useState, useEffect } from 'react';
+import { formatCurrency } from '../utils/formatters';
+
+export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
+  const [item, setItem] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isActionLoading, setIsActionLoading] = useState(false);
+  const [showSellForm, setShowSellForm] = useState(false);
+  const [sellQuantity, setSellQuantity] = useState('');
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  
+  // Neuer State für die Erfolgsmeldung beim Teilverkauf
+  const [sellSuccess, setSellSuccess] = useState(false);
+
+  useEffect(() => {
+    fetchItem();
+  }, [portfolioId, itemId]);
+
+  const fetchItem = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items/${itemId}`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (!response.ok) throw new Error("Fehler");
+      const data = await response.json();
+      setItem(data);
+    } catch (err) { console.error(err); }
+    finally { setIsLoading(false); }
+  };
+
+  const handleSell = async (e) => {
+    e.preventDefault();
+    setIsActionLoading(true);
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items/${itemId}/sell`, { 
+        method: 'POST',
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: parseFloat(sellQuantity) })
+      });
+      if (response.ok) {
+        const updatedItem = await response.json();
+        if (updatedItem === null) {
+          onBack("Position vollständig verkauft");
+        } else {
+          setItem(updatedItem);
+          setShowSellForm(false);
+          setSellQuantity('');
+          
+          // Erfolgsmeldung triggern
+          setSellSuccess(true);
+          setTimeout(() => setSellSuccess(false), 3000);
+        }
+      }
+    } catch (err) { console.error(err); }
+    finally { setIsActionLoading(false); }
+  };
+
+  const handleDelete = async () => {
+    setIsActionLoading(true);
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items/${itemId}`, { 
+        method: 'DELETE',
+        headers: { "Authorization": `Bearer ${token}` } 
+      });
+      if (response.status === 204 || response.ok) {
+        onBack("Position erfolgreich gelöscht");
+      }
+    } catch (err) { console.error(err); }
+    finally { setIsActionLoading(false); }
+  };
+
+  if (isLoading) return <div className="p-20 text-center font-bold text-slate-500">Lade Asset...</div>;
+  if (!item) return <div className="p-20 text-center">Nicht gefunden.</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto px-4 py-10 animate-in slide-in-from-right duration-300 relative">
+      
+      {/* 2. DESIGN-KONFORMER TOAST (Hier eingefügt) */}
+      {sellSuccess && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[150] bg-slate-900 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border-b-4 border-indigo-500 animate-in fade-in zoom-in duration-300">
+          <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-[10px] font-black">
+            ✓
+          </div>
+          <span className="font-black uppercase tracking-widest text-xs">Teilverkauf verbucht</span>
+        </div>
+      )}
+
+      {/* DELETE MODAL */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in duration-300">
+            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-2xl mb-6 mx-auto">⚠️</div>
+            <h3 className="text-2xl font-black text-slate-900 text-center mb-2 italic uppercase tracking-tighter">Sicher löschen?</h3>
+            <p className="text-slate-500 text-center mb-8 font-medium">Diese Aktion kann nicht rückgängig gemacht werden.</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={handleDelete} disabled={isActionLoading} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-rose-600 transition-all uppercase text-xs tracking-widest">
+                {isActionLoading ? "Processing..." : "Ja, löschen"}
+              </button>
+              <button onClick={() => setShowDeleteConfirm(false)} className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all uppercase text-xs tracking-widest">Abbrechen</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HEADER BEREICH */}
+      <div className="flex justify-between items-center mb-8">
+        <button onClick={() => onBack()} className="text-indigo-600 font-bold flex items-center gap-2 transition-transform hover:-translate-x-1 uppercase text-xs tracking-widest">← Zurück</button>
+        <div className="flex gap-3">
+          <button onClick={() => setShowSellForm(!showSellForm)} className="bg-amber-50 text-amber-600 px-5 py-2.5 rounded-xl font-bold hover:bg-amber-100 uppercase text-[10px] tracking-widest transition-all">Verkauf</button>
+          <button onClick={() => setShowDeleteConfirm(true)} className="bg-rose-50 text-rose-600 px-5 py-2.5 rounded-xl font-bold hover:bg-rose-100 uppercase text-[10px] tracking-widest transition-all">Löschen</button>
+        </div>
+      </div>
+
+      {/* VERKAUFS FORMULAR */}
+      {showSellForm && (
+        <div className="mb-8 bg-amber-50 border border-amber-100 p-6 rounded-[2rem] animate-in slide-in-from-top duration-300 shadow-xl">
+          <form onSubmit={handleSell} className="flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-amber-800 text-[10px] font-black uppercase mb-2 ml-1 tracking-widest">Menge zum Verkauf</label>
+              <input 
+                type="number" 
+                step="any" 
+                value={sellQuantity} 
+                onChange={(e) => setSellQuantity(e.target.value)} 
+                placeholder={`MAX: ${Math.round(item.quantity)}`} 
+                className="w-full bg-white border-none rounded-xl py-4 px-4 focus:ring-2 focus:ring-amber-500 font-bold text-slate-900 shadow-inner" 
+                required 
+              />
+            </div>
+            <button type="submit" disabled={isActionLoading} className="w-full md:w-auto bg-amber-500 text-white px-10 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-lg hover:bg-amber-600 active:scale-95 transition-all">Bestätigen</button>
+          </form>
+        </div>
+      )}
+
+      {/* ASSET DETAILS CARD */}
+      <div className="bg-white rounded-[2.5rem] p-10 shadow-xl border border-slate-100 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-50 rounded-full -mr-32 -mt-32 opacity-30"></div>
+        <div className="relative z-10">
+          <span className="text-indigo-600 font-black uppercase tracking-[0.2em] text-[10px] bg-indigo-50 px-3 py-1 rounded-full">Asset Details</span>
+          <h2 className="text-4xl font-black text-slate-900 mt-4 tracking-tighter">{item.asset?.name}</h2>
+          <p className="text-slate-400 font-bold text-lg mb-8 tracking-widest">{item.asset?.symbol} | {item.asset?.isin}</p>
+
+          <div className="grid grid-cols-2 gap-8 border-t border-slate-50 pt-8">
+            <div>
+              <p className="text-slate-400 text-[10px] font-black uppercase mb-1 tracking-widest">Bestand</p>
+              <p className="text-3xl font-black text-slate-800 tabular-nums">
+                {Number(item.quantity).toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-[10px] font-black uppercase mb-1 tracking-widest">Ø Kaufpreis</p>
+              <p className="text-3xl font-black text-slate-800 tabular-nums">
+                {formatCurrency(parseFloat(item.avg_cost_price))}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-10 p-8 bg-slate-900 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group">
+            <div className="absolute inset-0 bg-indigo-500 opacity-0 group-hover:opacity-5 transition-opacity"></div>
+            <p className="opacity-60 text-[10px] font-black uppercase tracking-[0.3em]">Positionswert</p>
+            <p className="text-5xl font-black mt-3 tabular-nums text-indigo-400 tracking-tighter">
+              {formatCurrency(parseFloat(item.quantity) * parseFloat(item.avg_cost_price))}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
