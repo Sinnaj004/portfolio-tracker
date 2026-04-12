@@ -50,6 +50,6 @@ class PortfolioItemOut(PortfolioItemBase):
 
 class PortfolioItemSell(BaseModel):
     quantity: Decimal = Field(..., gt=0, decimal_places=4)
+    sale_price: Optional[Decimal] = None
+    sale_date: datetime = Field(default_factory=datetime.now)
 
-    class Config:
-        coerce_numbers_to_str = True

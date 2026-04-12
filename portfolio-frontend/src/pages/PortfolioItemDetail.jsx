@@ -3,18 +3,37 @@ import { formatCurrency } from '../utils/formatters';
 
 export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
   const [item, setItem] = useState(null);
+  const [user, setUser] = useState(null); // Neuer State für User-Daten
   const [isLoading, setIsLoading] = useState(true);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [showSellForm, setShowSellForm] = useState(false);
   const [sellQuantity, setSellQuantity] = useState('');
+  const [sellPrice, setSellPrice] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  
-  // Neuer State für die Erfolgsmeldung beim Teilverkauf
   const [sellSuccess, setSellSuccess] = useState(false);
 
   useEffect(() => {
-    fetchItem();
+    // Lädt Asset und User-Daten parallel
+    const loadData = async () => {
+      setIsLoading(true);
+      await Promise.all([fetchItem(), fetchUser()]);
+      setIsLoading(false);
+    };
+    loadData();
   }, [portfolioId, itemId]);
+
+  const fetchUser = async () => {
+    const token = localStorage.getItem('token');
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/me`, {
+        headers: { "Authorization": `Bearer ${token}` }
+      });
+      if (response.ok) {
+        const userData = await response.json();
+        setUser(userData);
+      }
+    } catch (err) { console.error("User-Fetch Fehler:", err); }
+  };
 
   const fetchItem = async () => {
     const token = localStorage.getItem('token');
@@ -26,7 +45,6 @@ export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
       const data = await response.json();
       setItem(data);
     } catch (err) { console.error(err); }
-    finally { setIsLoading(false); }
   };
 
   const handleSell = async (e) => {
@@ -37,7 +55,10 @@ export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items/${itemId}/sell`, { 
         method: 'POST',
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ quantity: parseFloat(sellQuantity) })
+        body: JSON.stringify({ 
+          quantity: parseFloat(sellQuantity),
+          sale_price: sellPrice ? parseFloat(sellPrice) : null 
+        })
       });
       if (response.ok) {
         const updatedItem = await response.json();
@@ -47,8 +68,7 @@ export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
           setItem(updatedItem);
           setShowSellForm(false);
           setSellQuantity('');
-          
-          // Erfolgsmeldung triggern
+          setSellPrice('');
           setSellSuccess(true);
           setTimeout(() => setSellSuccess(false), 3000);
         }
@@ -56,6 +76,9 @@ export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
     } catch (err) { console.error(err); }
     finally { setIsActionLoading(false); }
   };
+
+  // Hilfsvariable für die Währungsanzeige (Fallback auf EUR)
+  const displayCurrency = user?.preferred_currency || user?.preferred_curency || 'EUR';
 
   const handleDelete = async () => {
     setIsActionLoading(true);
@@ -72,36 +95,27 @@ export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
     finally { setIsActionLoading(false); }
   };
 
-  if (isLoading) return <div className="p-20 text-center font-bold text-slate-500">Lade Asset...</div>;
+  if (isLoading) return <div className="p-20 text-center font-bold text-slate-500">Lade Daten...</div>;
   if (!item) return <div className="p-20 text-center">Nicht gefunden.</div>;
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 animate-in slide-in-from-right duration-300 relative">
       
-      {/* 2. DESIGN-KONFORMER TOAST (Hier eingefügt) */}
+      <style>{`
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        input[type=number] {
+          -moz-appearance: textfield;
+        }
+      `}</style>
+      
       {sellSuccess && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[150] bg-slate-900 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border-b-4 border-indigo-500 animate-in fade-in zoom-in duration-300">
-          <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-[10px] font-black">
-            ✓
-          </div>
+          <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-[10px] font-black">✓</div>
           <span className="font-black uppercase tracking-widest text-xs">Teilverkauf verbucht</span>
-        </div>
-      )}
-
-      {/* DELETE MODAL */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-[2.5rem] p-8 max-w-sm w-full shadow-2xl animate-in zoom-in duration-300">
-            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center text-2xl mb-6 mx-auto">⚠️</div>
-            <h3 className="text-2xl font-black text-slate-900 text-center mb-2 italic uppercase tracking-tighter">Sicher löschen?</h3>
-            <p className="text-slate-500 text-center mb-8 font-medium">Diese Aktion kann nicht rückgängig gemacht werden.</p>
-            <div className="flex flex-col gap-3">
-              <button onClick={handleDelete} disabled={isActionLoading} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black hover:bg-rose-600 transition-all uppercase text-xs tracking-widest">
-                {isActionLoading ? "Processing..." : "Ja, löschen"}
-              </button>
-              <button onClick={() => setShowDeleteConfirm(false)} className="w-full bg-slate-100 text-slate-600 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all uppercase text-xs tracking-widest">Abbrechen</button>
-            </div>
-          </div>
         </div>
       )}
 
@@ -109,28 +123,56 @@ export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
       <div className="flex justify-between items-center mb-8">
         <button onClick={() => onBack()} className="text-indigo-600 font-bold flex items-center gap-2 transition-transform hover:-translate-x-1 uppercase text-xs tracking-widest">← Zurück</button>
         <div className="flex gap-3">
-          <button onClick={() => setShowSellForm(!showSellForm)} className="bg-amber-50 text-amber-600 px-5 py-2.5 rounded-xl font-bold hover:bg-amber-100 uppercase text-[10px] tracking-widest transition-all">Verkauf</button>
+          <button onClick={() => setShowSellForm(!showSellForm)} className={`px-5 py-2.5 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all ${showSellForm ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}>
+            {showSellForm ? 'Schließen' : 'Verkauf'}
+          </button>
           <button onClick={() => setShowDeleteConfirm(true)} className="bg-rose-50 text-rose-600 px-5 py-2.5 rounded-xl font-bold hover:bg-rose-100 uppercase text-[10px] tracking-widest transition-all">Löschen</button>
         </div>
       </div>
 
       {/* VERKAUFS FORMULAR */}
       {showSellForm && (
-        <div className="mb-8 bg-amber-50 border border-amber-100 p-6 rounded-[2rem] animate-in slide-in-from-top duration-300 shadow-xl">
-          <form onSubmit={handleSell} className="flex flex-col md:flex-row gap-4 items-end">
-            <div className="flex-1 w-full">
-              <label className="block text-amber-800 text-[10px] font-black uppercase mb-2 ml-1 tracking-widest">Menge zum Verkauf</label>
-              <input 
-                type="number" 
-                step="any" 
-                value={sellQuantity} 
-                onChange={(e) => setSellQuantity(e.target.value)} 
-                placeholder={`MAX: ${Math.round(item.quantity)}`} 
-                className="w-full bg-white border-none rounded-xl py-4 px-4 focus:ring-2 focus:ring-amber-500 font-bold text-slate-900 shadow-inner" 
-                required 
-              />
+        <div className="mb-8 bg-amber-50 border border-amber-100 p-8 rounded-[2rem] animate-in slide-in-from-top duration-300 shadow-xl">
+          <form onSubmit={handleSell} className="flex flex-col gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Menge */}
+              <div className="w-full">
+                <label className="block text-amber-800 text-[10px] font-black uppercase mb-2 ml-1 tracking-widest">Menge</label>
+                <input 
+                  type="number" 
+                  step="any" 
+                  value={sellQuantity} 
+                  onChange={(e) => setSellQuantity(e.target.value)} 
+                  placeholder={`MAX: ${Number(item.quantity).toFixed(2)}`} 
+                  className="w-full bg-white border-none rounded-2xl py-4 px-4 focus:ring-2 focus:ring-amber-500 font-bold text-slate-900 shadow-inner" 
+                  required 
+                />
+              </div>
+              
+              {/* Verkaufspreis mit dynamischer Währung */}
+              <div className="w-full relative">
+                <label className="block text-amber-800 text-[10px] font-black uppercase mb-2 ml-1 tracking-widest">
+                  Verkaufspreis (in {displayCurrency})
+                </label>
+                <div className="relative">
+                  <input 
+                    type="number" 
+                    step="any" 
+                    value={sellPrice} 
+                    onChange={(e) => setSellPrice(e.target.value)} 
+                    placeholder="Marktwert nutzen" 
+                    className="w-full bg-white border-none rounded-2xl py-4 px-4 pr-16 focus:ring-2 focus:ring-amber-500 font-bold text-slate-900 shadow-inner" 
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-amber-600 font-black text-xs opacity-40">
+                    {displayCurrency}
+                  </div>
+                </div>
+              </div>
             </div>
-            <button type="submit" disabled={isActionLoading} className="w-full md:w-auto bg-amber-500 text-white px-10 py-4 rounded-xl font-black uppercase text-xs tracking-widest shadow-lg hover:bg-amber-600 active:scale-95 transition-all">Bestätigen</button>
+
+            <button type="submit" disabled={isActionLoading} className="w-full bg-amber-500 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest shadow-lg hover:bg-amber-600 active:scale-95 transition-all">
+              {isActionLoading ? "Verbuche..." : "Transaktion bestätigen"}
+            </button>
           </form>
         </div>
       )}
@@ -160,7 +202,7 @@ export default function PortfolioItemDetail({ portfolioId, itemId, onBack }) {
 
           <div className="mt-10 p-8 bg-slate-900 rounded-[2rem] text-white shadow-2xl relative overflow-hidden group">
             <div className="absolute inset-0 bg-indigo-500 opacity-0 group-hover:opacity-5 transition-opacity"></div>
-            <p className="opacity-60 text-[10px] font-black uppercase tracking-[0.3em]">Positionswert</p>
+            <p className="opacity-60 text-[10px] font-black uppercase tracking-[0.3em]">Positionswert (Einstieg)</p>
             <p className="text-5xl font-black mt-3 tabular-nums text-indigo-400 tracking-tighter">
               {formatCurrency(parseFloat(item.quantity) * parseFloat(item.avg_cost_price))}
             </p>

@@ -3,7 +3,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Union
 from app.api.deps import get_db, get_current_user
-from app.models.models import Portfolio, User, PortfolioItem, Asset, AssetPrice
+from app.models.models import Portfolio, User, PortfolioItem, Asset, AssetPrice, Transaction
 from app.schemas.portfolio_items import PortfolioItemOut, PortfolioItemCreate, PortfolioItemSell
 from fastapi import APIRouter, Depends, HTTPException, status, Response
 from uuid import UUID
@@ -13,6 +13,7 @@ from ...services.asset_service import asset_service
 
 router = APIRouter()
 
+
 @router.post("/{portfolio_id}/items", response_model=PortfolioItemOut, status_code=status.HTTP_201_CREATED)
 def add_portfolio_item(
         portfolio_id: UUID,
@@ -21,7 +22,11 @@ def add_portfolio_item(
         current_user: User = Depends(get_current_user)
 ):
     # 1. Portfolio Check
-    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id, Portfolio.user_id == current_user.id).first()
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id,
+        Portfolio.user_id == current_user.id
+    ).first()
+
     if not portfolio:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio not found")
 
@@ -44,9 +49,7 @@ def add_portfolio_item(
         if not external_data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found externally")
 
-        # --- NEU: ZWEITER CHECK NACH API-SUCHE ---
-        # Verhindert den Unique-Error, falls das gefundene Symbol (z.B. "DTE")
-        # bereits unter einem anderen Namen/Weg existiert.
+        # Zweiter Check nach API-Suche (Unique Constraint Schutz)
         asset = db.query(Asset).filter(Asset.symbol == external_data["symbol"].upper()).first()
 
         if not asset:
@@ -60,80 +63,120 @@ def add_portfolio_item(
                 last_api_update=datetime.now()
             )
             db.add(asset)
-            db.flush()  # ID generieren
+            db.flush()  # ID für Preis-Eintrag generieren
 
-            # Ersten Preis in Historie schreiben
             if current_live_price:
                 new_price_entry = AssetPrice(asset_id=asset.id, price=current_live_price, timestamp=datetime.now())
                 db.add(new_price_entry)
         else:
-            print(f"DEBUG: Asset {asset.symbol} wurde nach API-Abgleich doch in DB gefunden (Update ISIN).")
-            # ISIN ergänzen, falls sie durch die neue Suche jetzt verfügbar ist
+            print(f"DEBUG: Asset {asset.symbol} nach API-Abgleich doch gefunden.")
             if not asset.isin and external_data.get("isin"):
                 asset.isin = external_data["isin"]
 
             latest = asset.latest_price_record
             current_live_price = latest.price if latest else external_data.get("current_price")
     else:
-        print(f"DEBUG: Asset {asset.symbol} bereits vorhanden. Kein API-Call nötig.")
+        print(f"DEBUG: Asset {asset.symbol} bereits vorhanden.")
         latest = asset.latest_price_record
         current_live_price = latest.price if latest else 0
 
-    # 4. PortfolioItem verwalten (Mischkurs etc.)
+    # --- NEU: TRANSAKTIONS-LOGIK (BUY) ---
+
+    # Währungen und Wechselkurs ermitteln
+    asset_curr = (asset.currency or "EUR").upper()
+    user_currency = getattr(current_user, "preferred_currency", "EUR") or "EUR"
+
+    # Wechselkurs zum Kaufzeitpunkt aus dem Cache/API holen
+    exchange_rate = asset_service.get_exchange_rate(asset_curr, user_currency)
+
+    # Transaktion in das Logbuch schreiben
+    new_transaction = Transaction(
+        portfolio_id=portfolio_id,
+        asset_id=asset.id,
+        type="BUY",
+        quantity=item_in.quantity,
+        price_per_unit=item_in.avg_cost_price,
+        fees=0.0,
+        total_amount=float(item_in.quantity) * float(item_in.avg_cost_price),
+        currency=asset_curr,
+        exchange_rate=exchange_rate,
+        transaction_date=datetime.now()
+    )
+    db.add(new_transaction)
+
+    # 4. PortfolioItem verwalten (Bestand & Mischkurs)
     db_item = db.query(PortfolioItem).filter(
         PortfolioItem.portfolio_id == portfolio_id,
         PortfolioItem.asset_id == asset.id
     ).first()
 
     if not db_item:
-        db_item = PortfolioItem(portfolio_id=portfolio_id, asset_id=asset.id, quantity=0, avg_cost_price=0)
+        db_item = PortfolioItem(
+            portfolio_id=portfolio_id,
+            asset_id=asset.id,
+            quantity=0,
+            avg_cost_price=0
+        )
         db.add(db_item)
 
+    # Mischkurs-Berechnung bei Nachkäufen
     if db_item.quantity > 0:
-        total_cost_old = db_item.quantity * db_item.avg_cost_price
-        total_cost_new = item_in.quantity * item_in.avg_cost_price
-        new_total_quantity = db_item.quantity + item_in.quantity
+        total_cost_old = float(db_item.quantity) * float(db_item.avg_cost_price)
+        total_cost_new = float(item_in.quantity) * float(item_in.avg_cost_price)
+        new_total_quantity = float(db_item.quantity) + float(item_in.quantity)
+
         db_item.avg_cost_price = (total_cost_old + total_cost_new) / new_total_quantity
         db_item.quantity = new_total_quantity
     else:
+        # Erstkauf
         db_item.quantity = item_in.quantity
         db_item.avg_cost_price = item_in.avg_cost_price
 
+    # 5. Finale Speicherung
     db.commit()
     db.refresh(db_item)
 
-    # 5. Preisdaten an das Objekt für die Response heften
+    # Preisdaten für die API-Response anheften (Virtual Fields)
     db_item.asset.current_price = current_live_price
     db_item.asset.last_api_update = asset.last_api_update
 
-    print(f"--- DEBUG END: Success (Asset: {asset.symbol}) ---\n")
+    print(f"--- DEBUG END: Success (Asset: {asset.symbol}, Rate: {exchange_rate}) ---\n")
+
     return db_item
+
 
 @router.get("/{portfolio_id}", response_model=List[PortfolioItemOut], status_code=status.HTTP_200_OK)
 def get_portfolio_items(
-    portfolio_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+        portfolio_id: UUID,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
 ):
     # 1. Abfrage mit "Eager Loading"
-    # Wir laden PortfolioItem -> Asset -> prices in einer einzigen SQL-Abfrage (JOIN)
     items = db.query(PortfolioItem).options(
         joinedload(PortfolioItem.asset).joinedload(Asset.prices)
     ).filter(
         PortfolioItem.portfolio_id == portfolio_id
     ).all()
 
-    # 2. Die virtuellen Felder für Pydantic befüllen
+    # User Währung bestimmen (Fallback auf EUR)
+    user_currency = getattr(current_user, "preferred_currency", "EUR") or "EUR"
+
+    # 2. Die virtuellen Felder befüllen + Währungsumrechnung
     for item in items:
-        # Hier nutzen wir deine neue @property 'latest_price_record'
         latest = item.asset.latest_price_record
         if latest:
-            # Wir "pappen" die Daten temporär an das Asset-Objekt
-            # Pydantic liest sie dann für das AssetShort-Schema aus
-            item.asset.current_price = latest.price
+            price_in_asset_curr = float(latest.price)
+            asset_curr = item.asset.currency or "EUR"
+
+            # UMRECHNUNG: Falls Asset-Währung (z.B. USD) != User-Währung (z.B. EUR)
+            if asset_curr.upper() != user_currency.upper():
+                rate = asset_service.get_exchange_rate(asset_curr, user_currency)
+                item.asset.current_price = price_in_asset_curr * rate
+            else:
+                item.asset.current_price = price_in_asset_curr
+
             item.asset.last_updated = latest.timestamp
         else:
-            # Fallback, falls noch gar kein Preis in der DB existiert
             item.asset.current_price = 0.0
             item.asset.last_updated = None
 
@@ -173,10 +216,16 @@ def delete_portfolio_item(portfolio_id: UUID, item_id: UUID, db: Session = Depen
 
 
 @router.post("/{portfolio_id}/items/{item_id}/sell", response_model=Union[PortfolioItemOut, None])
-def sell_portfolio_item(portfolio_id: UUID, item_id: UUID, sell_in: PortfolioItemSell, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    # 1. Abfrage mit erweitertem joinedload (jetzt auch inklusive prices)
+def sell_portfolio_item(
+        portfolio_id: UUID,
+        item_id: UUID,
+        sell_in: PortfolioItemSell,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user)
+):
+    # 1. Item inkl. Asset laden
     db_item = db.query(PortfolioItem).options(
-        joinedload(PortfolioItem.asset).joinedload(Asset.prices)
+        joinedload(PortfolioItem.asset)
     ).join(Portfolio).filter(
         PortfolioItem.id == item_id,
         Portfolio.id == portfolio_id,
@@ -186,34 +235,60 @@ def sell_portfolio_item(portfolio_id: UUID, item_id: UUID, sell_in: PortfolioIte
     if not db_item:
         raise HTTPException(status_code=404, detail="Portfolio item not found")
 
-    # 2. Validierung
-    if db_item.quantity < sell_in.quantity:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Not enough shares. Quantity: {db_item.quantity}, Planned sell: {sell_in.quantity}"
-        )
+    # 2. Währungskontext bestimmen
+    asset_curr = (db_item.asset.currency or "EUR").upper()
+    user_curr = (getattr(current_user, "preferred_curency", "EUR") or "EUR").upper()
 
-    # 3. Logik: Abziehen oder Löschen
-    new_quantity = db_item.quantity - sell_in.quantity
+    # Wechselkurs holen: 1 Einheit Asset_Curr = X Einheiten User_Curr (z.B. 1 USD = 0.92 EUR)
+    current_rate = float(asset_service.get_exchange_rate(asset_curr, user_curr))
 
-    if new_quantity == 0:
+    # 3. Verkaufspreis bestimmen & ggf. umrechnen
+    # Wir speichern in der DB IMMER in Asset-Währung (z.B. USD)
+    if sell_in.sale_price is not None:
+        # User gibt Preis in seiner Währung an (z.B. EUR).
+        # Umrechnung in Asset-Währung: EUR / Rate = USD
+        final_sale_price_asset_curr = float(sell_in.sale_price) / current_rate
+    else:
+        # Fallback auf Marktpreis (dieser liegt bereits in Asset-Währung vor)
+        latest = db_item.asset.latest_price_record
+        if not latest:
+            raise HTTPException(status_code=400, detail="Kein Marktpreis verfügbar. Bitte Preis manuell angeben.")
+        final_sale_price_asset_curr = float(latest.price)
+
+    # 4. PnL Berechnung (In der Währung des Assets)
+    # (Verkaufspreis USD - Einkaufspreis USD) * Menge
+    pnl_in_asset_curr = (final_sale_price_asset_curr - float(db_item.avg_cost_price)) * float(sell_in.quantity)
+
+    # 5. Transaktion loggen
+    new_transaction = Transaction(
+        portfolio_id=portfolio_id,
+        asset_id=db_item.asset_id,
+        type="SELL",
+        quantity=sell_in.quantity,
+        price_per_unit=final_sale_price_asset_curr,  # In USD
+        fees=0.0,
+        total_amount=float(sell_in.quantity) * final_sale_price_asset_curr,
+        currency=asset_curr,  # "USD"
+        exchange_rate=current_rate,  # 0.92 (Wichtig für Rückrechnung: USD * 0.92 = EUR)
+        realized_pnl=pnl_in_asset_curr,
+        transaction_date=sell_in.sale_date or datetime.now()
+    )
+    db.add(new_transaction)
+
+    # 6. Bestand anpassen oder löschen
+    new_quantity = float(db_item.quantity) - float(sell_in.quantity)
+
+    if new_quantity <= 0:
         db.delete(db_item)
         db.commit()
+        # Bei vollständigem Verkauf geben wir 204 zurück
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 
-    else:
-        db_item.quantity = new_quantity
-        db.commit()
-        db.refresh(db_item)
+    db_item.quantity = new_quantity
+    db.commit()
+    db.refresh(db_item)
 
-        # 4. Preisdaten für die API-Antwort anheften
-        # Wir nutzen wieder die @property aus dem Asset-Model
-        latest = db_item.asset.latest_price_record
-        if latest:
-            db_item.asset.current_price = latest.price
-            # Achte darauf, ob dein Schema 'last_api_update' oder 'last_updated' heißt:
-            db_item.asset.last_api_update = latest.timestamp
-        else:
-            db_item.asset.current_price = 0.0
+    # Preisdaten für die Response-Vorschau (optional)
+    db_item.asset.current_price = final_sale_price_asset_curr
 
-        return db_item
+    return db_item

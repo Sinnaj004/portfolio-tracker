@@ -65,21 +65,23 @@ class PortfolioItem(Base):
 
 
 class Transaction(Base):
-    """Logbuch aller Käufe, Verkäufe und Dividenden."""
     __tablename__ = "transactions"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     portfolio_id = Column(UUID(as_uuid=True), ForeignKey("portfolios.id"), nullable=False)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), nullable=False)
 
-    # Typ: "BUY", "SELL", "DIVIDEND"
-    type = Column(String, nullable=False)
-    quantity = Column(Numeric(precision=18, scale=8), nullable=False)
-    price_per_unit = Column(Numeric(precision=18, scale=4), nullable=False)
-    fees = Column(Numeric(precision=18, scale=4), default=0.0)
+    type = Column(String, nullable=False)  # "BUY", "SELL", "DIVIDEND"
+    quantity = Column(Numeric(18, 8), nullable=False)
+    price_per_unit = Column(Numeric(18, 4), nullable=False)
+    fees = Column(Numeric(18, 4), default=0.0)
+    total_amount = Column(Numeric(18, 4))  # (quantity * price_per_unit) + fees (oder - fees bei Verkauf)
     currency = Column(String, default="EUR")
+    exchange_rate = Column(Numeric(18, 6), default=1.0)
     transaction_date = Column(DateTime, default=datetime.now)
 
-    # Relationships
+    # Optional aber nützlich für Statistiken:
+    realized_pnl = Column(Numeric(18, 4), nullable=True)  # Nur für SELL
+
     portfolio = relationship("Portfolio", back_populates="transactions")
     asset = relationship("Asset")
 
