@@ -41,6 +41,17 @@ class Asset(Base):
     currency = Column(String, default="USD")
     last_api_update = Column(DateTime, nullable=True)
 
+    prices = relationship("AssetPrice", back_populates="asset", cascade="all, delete-orphan")
+
+    @property
+    def latest_price_record(self):
+        """Gibt das neueste AssetPrice-Objekt aus der Historie zurück."""
+        if not self.prices:
+            return None
+        # Sortiert die Liste der Preise nach Timestamp absteigend
+        return sorted(self.prices, key=lambda p: p.timestamp, reverse=True)[0]
+
+
 class PortfolioItem(Base):
     __tablename__ = "portfolio_items"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -73,15 +84,13 @@ class Transaction(Base):
     asset = relationship("Asset")
 
 
-class AssetPrice(Base):
-    """
-    Speichert historische Preise.
-    Hinweis: Diese Tabelle wird in TimescaleDB später als 'Hypertable' markiert.
-    """
-    __tablename__ = "asset_prices"
-    timestamp = Column(DateTime, primary_key=True, default=datetime.now)
-    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"), primary_key=True)
-    price = Column(Numeric(precision=18, scale=4), nullable=False)
-    volume = Column(Numeric(precision=18, scale=2), nullable=True)
 
-    asset = relationship("Asset")
+class AssetPrice(Base):
+    __tablename__ = "asset_prices"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
+    price = Column(Numeric(16, 8), nullable=False)
+    timestamp = Column(DateTime, default=datetime.now, index=True) # Index für schnelle Zeit-Abfragen
+
+    asset = relationship("Asset", back_populates="prices")

@@ -13,6 +13,8 @@ services:
       - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
+    networks:
+      - portfolio_network
 
   # --- Cache: Redis ---
   redis:
@@ -21,12 +23,18 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    networks:
+      - portfolio_network
 
   # --- Backend: FastAPI ---
   backend:
     build: ./backend
     container_name: portfolio_backend
     restart: always
+    # --- NEU: DNS-Server hinzufügen ---
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     depends_on:
       - db
       - redis
@@ -36,7 +44,8 @@ services:
       - ./backend:/app
     ports:
       - "8000:8000"
-    # host 0.0.0.0 ist hier bereits korrekt für Netzwerkzugriff
+    networks:
+      - portfolio_network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   # --- Frontend: React (Vite) ---
@@ -49,12 +58,17 @@ services:
       - ./portfolio-frontend:/app
       - /app/node_modules
     environment:
-      # WICHTIG: Ersetze 192.168.xxx.xxx mit der IP deines Rechners!
       - VITE_API_URL=http://192.168.178.42:8000/api/v1
     depends_on:
       - backend
-
+    networks:
+      - portfolio_network
     command: npm run dev -- --host 0.0.0.0
+
+# --- NEU: Explizite Netzwerk-Definition ---
+networks:
+  portfolio_network:
+    driver: bridge
 
 volumes:
   db_data:

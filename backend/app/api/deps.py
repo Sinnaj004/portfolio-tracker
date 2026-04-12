@@ -69,3 +69,11 @@ def get_current_user(db: Session = Depends(get_db), token: str = Depends(oauth2_
     except Exception as e:
         print(f"DEBUG ERROR: Datenbank-Fehler: {str(e)}")
         raise credentials_exception
+
+def get_current_admin_user(current_user: User = Depends(get_current_user)):
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The user doesn't have enough privileges"
+        )
+    return current_user

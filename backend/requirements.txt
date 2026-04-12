@@ -11,3 +11,4 @@ python-jose[cryptography]
 python-multipart
 email-validator
 yfinance
+apscheduler

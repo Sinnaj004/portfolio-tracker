@@ -12,7 +12,9 @@ class AssetShort(BaseModel):
     name: str
     isin: Optional[str] = None
     asset_type: str
-
+    current_price: Optional[Decimal] = None
+    last_api_update: Optional[datetime] = None
+    
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -40,7 +42,6 @@ class PortfolioItemOut(PortfolioItemBase):
     id: UUID
     portfolio_id: UUID
     asset_id: UUID
-    last_updated: Optional[datetime] = None
 
     # Hier betten wir die Asset-Details ein (sehr praktisch fürs Frontend!)
     asset: AssetShort
