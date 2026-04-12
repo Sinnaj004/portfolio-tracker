@@ -12,7 +12,6 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
     is_admin = Column(Boolean, nullable=False, default=False)
-    preferred_curency = Column(String, default="EUR")
     created_at = Column(DateTime, default=datetime.now())
 
     portfolios = relationship("Portfolio", back_populates="owner", cascade="all, delete-orphan")
@@ -23,6 +22,7 @@ class Portfolio(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"))
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
+    currency = Column(String, default="EUR")
     created_at = Column(DateTime, default=datetime.now)
 
     owner = relationship("User", back_populates="portfolios")

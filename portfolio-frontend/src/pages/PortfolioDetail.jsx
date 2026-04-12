@@ -3,7 +3,7 @@ import { formatCurrency } from '../utils/formatters';
 import AddAssetModal from '../components/modals/AddAssetModal';
 import PortfolioItemDetail from './PortfolioItemDetail';
 
-export default function PortfolioDetail({ portfolioId, onBack }) {
+export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack }) {
   const [portfolioItems, setPortfolioItems] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,9 +46,9 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
     return acc;
   }, { totalEntry: 0, totalMarket: 0 });
 
-  const totalProfitLossEur = totals.totalMarket - totals.totalEntry;
+  const totalProfitLoss = totals.totalMarket - totals.totalEntry;
   const totalProfitLossPct = totals.totalEntry > 0 
-    ? (totalProfitLossEur / totals.totalEntry) * 100 
+    ? (totalProfitLoss / totals.totalEntry) * 100 
     : 0;
 
   if (selectedItemId) {
@@ -66,9 +66,8 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-10 animate-in fade-in duration-500 relative">
+    <div className="max-w-7xl mx-auto px-4 py-10 animate-in fade-in duration-500 relative text-slate-900">
       
-      {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-10 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl shadow-2xl font-bold text-white animate-in fade-in zoom-in ${toast.type === 'error' ? 'bg-rose-500' : 'bg-emerald-500'}`}>
           {toast.type === 'success' ? '✅ ' : '❌ '} {toast.message}
@@ -84,28 +83,25 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
         <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-8">Portfolio Performance</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
-          {/* Aktueller Marktwert */}
           <div className="space-y-1">
             <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Aktueller Depotwert</span>
             <div className="text-4xl font-black text-indigo-600 tabular-nums">
-              {formatCurrency(totals.totalMarket)}
+              {formatCurrency(totals.totalMarket, portfolioCurrency)}
             </div>
           </div>
 
-          {/* Einstiegswert */}
           <div className="space-y-1">
             <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Investiertes Kapital</span>
             <div className="text-2xl font-bold text-slate-700 tabular-nums">
-              {formatCurrency(totals.totalEntry)}
+              {formatCurrency(totals.totalEntry, portfolioCurrency)}
             </div>
           </div>
 
-          {/* Gesamte Rendite */}
           <div className="space-y-1">
             <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Gesamtrendite (G/V)</span>
-            <div className={`text-2xl font-black tabular-nums flex items-baseline gap-2 ${totalProfitLossEur >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-              <span>{totalProfitLossEur >= 0 ? '+' : ''}{formatCurrency(totalProfitLossEur)}</span>
-              <span className={`text-xs px-2 py-1 rounded-lg font-bold ${totalProfitLossEur >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+            <div className={`text-2xl font-black tabular-nums flex items-baseline gap-2 ${totalProfitLoss >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              <span>{totalProfitLoss >= 0 ? '+' : ''}{formatCurrency(totalProfitLoss, portfolioCurrency)}</span>
+              <span className={`text-xs px-2 py-1 rounded-lg font-bold ${totalProfitLoss >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
                 {totalProfitLossPct >= 0 ? '+' : ''}{totalProfitLossPct.toFixed(2)}%
               </span>
             </div>
@@ -144,14 +140,11 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
               
               const entryValue = qty * avgCost;
               const marketValue = qty * currentPrice;
-              const profitLossPct = entryValue > 0 ? ((marketValue - entryValue) / entryValue) * 100 : 0;
+              const profitLoss = marketValue - entryValue;
+              const profitLossPct = entryValue > 0 ? (profitLoss / entryValue) * 100 : 0;
 
               return (
-                <tr 
-                  key={item.id} 
-                  onClick={() => setSelectedItemId(item.id)} 
-                  className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
-                >
+                <tr key={item.id} onClick={() => setSelectedItemId(item.id)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
                   <td className="px-6 py-5">
                     <div className="font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
                       {item.asset?.symbol}
@@ -164,17 +157,17 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
                     {qty.toLocaleString()}
                   </td>
                   <td className="px-4 py-5 tabular-nums text-right text-slate-500 font-medium text-xs">
-                    {formatCurrency(entryValue)}
+                    {formatCurrency(entryValue, portfolioCurrency)}
                   </td>
                   <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">
-                    {formatCurrency(marketValue)}
+                    {formatCurrency(marketValue, portfolioCurrency)}
                   </td>
                   <td className="px-4 py-5 tabular-nums text-right text-[10px] text-slate-400 font-bold">
-                    {formatCurrency(currentPrice)}
+                    {formatCurrency(currentPrice, portfolioCurrency)}
                   </td>
-                  <td className={`px-6 py-5 tabular-nums text-right font-black ${profitLossPct >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                  <td className={`px-6 py-5 tabular-nums text-right font-black ${profitLoss >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
                     <div className="text-sm">
-                      {profitLossPct >= 0 ? '+' : ''}{formatCurrency(marketValue - entryValue)}
+                      {profitLoss >= 0 ? '+' : ''}{formatCurrency(profitLoss, portfolioCurrency)}
                     </div>
                     <div className="text-[10px] opacity-80">
                       {profitLossPct >= 0 ? '+' : ''}{profitLossPct.toFixed(2)}%
@@ -183,24 +176,11 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
                 </tr>
               );
             })}
-            {portfolioItems.length === 0 && (
-              <tr>
-                <td colSpan="6" className="px-6 py-10 text-center text-slate-400 font-medium">
-                  Noch keine Assets in diesem Portfolio.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
 
-      {showAddModal && (
-        <AddAssetModal 
-          portfolioId={portfolioId} 
-          onClose={() => setShowAddModal(false)} 
-          onRefresh={fetchDetails} 
-        />
-      )}
+      {showAddModal && <AddAssetModal portfolioId={portfolioId} onClose={() => setShowAddModal(false)} onRefresh={fetchDetails} />}
     </div>
   );
 }

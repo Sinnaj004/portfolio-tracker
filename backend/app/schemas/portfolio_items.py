@@ -3,6 +3,7 @@ from uuid import UUID
 from decimal import Decimal
 from datetime import datetime
 from typing import Optional
+from .portfolio import PortfolioOut
 
 
 # Hilfsschema für die Anzeige von Asset-Details im Item
@@ -45,6 +46,7 @@ class PortfolioItemOut(PortfolioItemBase):
 
     # Hier betten wir die Asset-Details ein (sehr praktisch fürs Frontend!)
     asset: AssetShort
+    portfolio: PortfolioOut
 
     model_config = ConfigDict(from_attributes=True)
 

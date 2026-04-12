@@ -21,7 +21,7 @@ def add_portfolio_item(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    # 1. Portfolio Check
+    # 1. Portfolio Check (inkl. Währung)
     portfolio = db.query(Portfolio).filter(
         Portfolio.id == portfolio_id,
         Portfolio.user_id == current_user.id
@@ -30,81 +30,72 @@ def add_portfolio_item(
     if not portfolio:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio not found")
 
-    print(f"\n--- DEBUG START: Processing {item_in.symbol or item_in.isin} ---")
-
+    # 2. Asset Logik (Suche/Erstellung)
     asset = None
-    current_live_price = None
-
-    # 2. Suche in lokaler DB (Erster Check)
     if item_in.isin:
         asset = db.query(Asset).filter(Asset.isin == item_in.isin).first()
     if not asset and item_in.symbol:
         asset = db.query(Asset).filter(Asset.symbol == item_in.symbol.upper()).first()
 
-    # 3. Logik: Nur extern suchen, wenn das Asset noch gar nicht existiert
     if not asset:
-        print("DEBUG: Asset neu. Starte einmalige externe Suche...")
         external_data = asset_service.search_external_asset(symbol=item_in.symbol, isin=item_in.isin)
-
         if not external_data:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found externally")
+            raise HTTPException(status_code=404, detail="Asset not found externally")
 
-        # Zweiter Check nach API-Suche (Unique Constraint Schutz)
         asset = db.query(Asset).filter(Asset.symbol == external_data["symbol"].upper()).first()
-
         if not asset:
-            current_live_price = external_data.get("current_price")
+            external_data = asset_service.search_external_asset(symbol=item_in.symbol, isin=item_in.isin)
+
+            # Strenger Check: Wenn kein Name da ist, existiert das Asset für uns nicht
+            if not external_data or not external_data.get("name"):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Asset '{item_in.symbol or item_in.isin}' wurde nicht gefunden oder ist unvollständig."
+                )
+
+            # ... restliche Logik zum Speichern ...
             asset = Asset(
                 symbol=external_data["symbol"].upper(),
-                name=external_data["name"],
-                asset_type=external_data["asset_type"],
-                currency=external_data["currency"],
+                name=external_data["name"],  # Hier wissen wir jetzt, dass er da ist
+                asset_type=external_data.get("asset_type") or "stock",
+                currency=(external_data.get("currency") or "USD").upper(),
                 isin=external_data.get("isin") or item_in.isin,
                 last_api_update=datetime.now()
             )
+
             db.add(asset)
-            db.flush()  # ID für Preis-Eintrag generieren
+            db.flush()
+            if external_data.get("current_price"):
+                db.add(AssetPrice(asset_id=asset.id, price=external_data["current_price"], timestamp=datetime.now()))
 
-            if current_live_price:
-                new_price_entry = AssetPrice(asset_id=asset.id, price=current_live_price, timestamp=datetime.now())
-                db.add(new_price_entry)
-        else:
-            print(f"DEBUG: Asset {asset.symbol} nach API-Abgleich doch gefunden.")
-            if not asset.isin and external_data.get("isin"):
-                asset.isin = external_data["isin"]
+    # --- NEU: WÄHRUNGS- & TRANSAKTIONS-LOGIK ---
 
-            latest = asset.latest_price_record
-            current_live_price = latest.price if latest else external_data.get("current_price")
-    else:
-        print(f"DEBUG: Asset {asset.symbol} bereits vorhanden.")
-        latest = asset.latest_price_record
-        current_live_price = latest.price if latest else 0
-
-    # --- NEU: TRANSAKTIONS-LOGIK (BUY) ---
-
-    # Währungen und Wechselkurs ermitteln
     asset_curr = (asset.currency or "EUR").upper()
-    user_currency = getattr(current_user, "preferred_currency", "EUR") or "EUR"
+    portfolio_curr = (portfolio.currency or "EUR").upper()  # Währung vom Portfolio!
 
-    # Wechselkurs zum Kaufzeitpunkt aus dem Cache/API holen
-    exchange_rate = asset_service.get_exchange_rate(asset_curr, user_currency)
+    # Wechselkurs: 1 Asset_Curr = X Portfolio_Curr (z.B. 1 USD = 0.91 CHF)
+    exchange_rate = float(asset_service.get_exchange_rate(asset_curr, portfolio_curr))
 
-    # Transaktion in das Logbuch schreiben
+    # WICHTIG: User gibt Preis in Portfolio-Währung an (z.B. CHF).
+    # Wir speichern in der DB den Preis pro Einheit in Asset-Währung (z.B. USD).
+    purchase_price_asset_curr = float(item_in.avg_cost_price) / exchange_rate
+
+    # Transaktion loggen
     new_transaction = Transaction(
         portfolio_id=portfolio_id,
         asset_id=asset.id,
         type="BUY",
         quantity=item_in.quantity,
-        price_per_unit=item_in.avg_cost_price,
+        price_per_unit=purchase_price_asset_curr,  # In Asset-Währung
         fees=0.0,
-        total_amount=float(item_in.quantity) * float(item_in.avg_cost_price),
+        total_amount=float(item_in.quantity) * purchase_price_asset_curr,
         currency=asset_curr,
-        exchange_rate=exchange_rate,
+        exchange_rate=exchange_rate,  # Kurs zum Kaufzeitpunkt fixieren
         transaction_date=datetime.now()
     )
     db.add(new_transaction)
 
-    # 4. PortfolioItem verwalten (Bestand & Mischkurs)
+    # 4. PortfolioItem (Bestand & Mischkurs in Asset-Währung)
     db_item = db.query(PortfolioItem).filter(
         PortfolioItem.portfolio_id == portfolio_id,
         PortfolioItem.asset_id == asset.id
@@ -119,28 +110,20 @@ def add_portfolio_item(
         )
         db.add(db_item)
 
-    # Mischkurs-Berechnung bei Nachkäufen
-    if db_item.quantity > 0:
+    if float(db_item.quantity) > 0:
+        # Mischkurs-Berechnung (beide Werte liegen nun in Asset-Währung vor)
         total_cost_old = float(db_item.quantity) * float(db_item.avg_cost_price)
-        total_cost_new = float(item_in.quantity) * float(item_in.avg_cost_price)
+        total_cost_new = float(item_in.quantity) * purchase_price_asset_curr
         new_total_quantity = float(db_item.quantity) + float(item_in.quantity)
 
         db_item.avg_cost_price = (total_cost_old + total_cost_new) / new_total_quantity
         db_item.quantity = new_total_quantity
     else:
-        # Erstkauf
         db_item.quantity = item_in.quantity
-        db_item.avg_cost_price = item_in.avg_cost_price
+        db_item.avg_cost_price = purchase_price_asset_curr
 
-    # 5. Finale Speicherung
     db.commit()
     db.refresh(db_item)
-
-    # Preisdaten für die API-Response anheften (Virtual Fields)
-    db_item.asset.current_price = current_live_price
-    db_item.asset.last_api_update = asset.last_api_update
-
-    print(f"--- DEBUG END: Success (Asset: {asset.symbol}, Rate: {exchange_rate}) ---\n")
 
     return db_item
 
@@ -151,34 +134,57 @@ def get_portfolio_items(
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
 ):
-    # 1. Abfrage mit "Eager Loading"
+    # 1. Das Portfolio laden, um die Zielwährung zu bestimmen
+    portfolio = db.query(Portfolio).filter(
+        Portfolio.id == portfolio_id,
+        Portfolio.user_id == current_user.id
+    ).first()
+
+    if not portfolio:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Portfolio nicht gefunden"
+        )
+
+    target_currency = (portfolio.currency or "EUR").upper()
+
+    # 2. Portfolio-Items mit Assets und Preisen laden
     items = db.query(PortfolioItem).options(
         joinedload(PortfolioItem.asset).joinedload(Asset.prices)
     ).filter(
         PortfolioItem.portfolio_id == portfolio_id
     ).all()
 
-    # User Währung bestimmen (Fallback auf EUR)
-    user_currency = getattr(current_user, "preferred_currency", "EUR") or "EUR"
-
-    # 2. Die virtuellen Felder befüllen + Währungsumrechnung
+    # 3. Daten für das Frontend aufbereiten und umrechnen
     for item in items:
+        asset_curr = (item.asset.currency or "EUR").upper()
+
+        # Den aktuellen Wechselkurs bestimmen: 1 Einheit der Asset-Währung = X Einheiten Portfolio-Währung
+        # Beispiel: 1 USD = 0.89 CHF
+        try:
+            current_rate = float(asset_service.get_exchange_rate(asset_curr, target_currency))
+        except Exception:
+            current_rate = 1.0  # Fallback, falls API-Umrechnung fehlschlägt
+
+        # --- A. Einstiegspreis (avg_cost_price) umrechnen ---
+        # Er liegt in der DB in Asset-Währung (z.B. USD).
+        # Wir rechnen ihn in CHF um, damit qty * avg_cost_price im Frontend den CHF-Wert ergibt.
+        if item.avg_cost_price:
+            item.avg_cost_price = float(item.avg_cost_price) * current_rate
+
+        # --- B. Aktuellen Marktpreis umrechnen ---
         latest = item.asset.latest_price_record
         if latest:
             price_in_asset_curr = float(latest.price)
-            asset_curr = item.asset.currency or "EUR"
-
-            # UMRECHNUNG: Falls Asset-Währung (z.B. USD) != User-Währung (z.B. EUR)
-            if asset_curr.upper() != user_currency.upper():
-                rate = asset_service.get_exchange_rate(asset_curr, user_currency)
-                item.asset.current_price = price_in_asset_curr * rate
-            else:
-                item.asset.current_price = price_in_asset_curr
-
+            # Aktuellen Kurs von USD nach CHF umrechnen
+            item.asset.current_price = price_in_asset_curr * current_rate
             item.asset.last_updated = latest.timestamp
         else:
             item.asset.current_price = 0.0
             item.asset.last_updated = None
+
+        # Hilfsfeld für das Frontend (optional)
+        item.current_exchange_rate = current_rate
 
     return items
 
@@ -225,7 +231,8 @@ def sell_portfolio_item(
 ):
     # 1. Item inkl. Asset laden
     db_item = db.query(PortfolioItem).options(
-        joinedload(PortfolioItem.asset)
+        joinedload(PortfolioItem.asset),
+        joinedload(PortfolioItem.portfolio)
     ).join(Portfolio).filter(
         PortfolioItem.id == item_id,
         Portfolio.id == portfolio_id,
@@ -237,10 +244,10 @@ def sell_portfolio_item(
 
     # 2. Währungskontext bestimmen
     asset_curr = (db_item.asset.currency or "EUR").upper()
-    user_curr = (getattr(current_user, "preferred_curency", "EUR") or "EUR").upper()
+    portfolio_curr = (db_item.portfolio.currency or "EUR").upper()
 
     # Wechselkurs holen: 1 Einheit Asset_Curr = X Einheiten User_Curr (z.B. 1 USD = 0.92 EUR)
-    current_rate = float(asset_service.get_exchange_rate(asset_curr, user_curr))
+    current_rate = float(asset_service.get_exchange_rate(asset_curr, portfolio_curr))
 
     # 3. Verkaufspreis bestimmen & ggf. umrechnen
     # Wir speichern in der DB IMMER in Asset-Währung (z.B. USD)

@@ -5,7 +5,9 @@ from typing import Optional
 
 class Portfolio(BaseModel):
     name: str
+    currency: str = "EUR"
     description: Optional[str] = None
+
 
 class PortfolioCreate(Portfolio):
     pass

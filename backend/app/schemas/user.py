@@ -17,7 +17,6 @@ class UserCreate(UserBase):
 class UserOut(UserBase):
     id: UUID
     is_admin: bool
-    preferred_curency: str
     created_at: datetime
 
     # Erlaubt Pydantic, Daten direkt von SQLAlchemy-Modellen zu lesen

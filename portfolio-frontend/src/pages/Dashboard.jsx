@@ -3,7 +3,7 @@ import StatCard from '../components/dashboard/StatCard';
 import CreatePortfolioModal from '../components/modals/CreatePortfolioModal';
 import DeleteConfirmModal from '../components/modals/DeleteConfirmModal';
 import PortfolioDetail from './PortfolioDetail';
-import Navbar from '../components/dashboard/Navbar'; // Import der neuen Navbar
+import Navbar from '../components/dashboard/Navbar';
 import { formatCurrency } from '../utils/formatters';
 
 export default function Dashboard({ onLogout }) {
@@ -47,7 +47,6 @@ export default function Dashboard({ onLogout }) {
     }
   };
 
-  // --- API: Portfolio löschen ---
   const handleConfirmDelete = async () => {
     if (!portfolioToDelete) return;
     
@@ -75,15 +74,23 @@ export default function Dashboard({ onLogout }) {
     fetchPortfolios();
   }, []);
 
-  const totalNetWorth = portfolios.reduce((sum, p) => sum + (p.total_value || 0), 0);
+  // --- WÄHRUNGS-LOGIK ---
+  // Da Portfolios verschiedene Währungen haben können, ist eine Summe ohne Umrechnung schwierig.
+  // Wir zeigen hier erstmal die Anzahl der Portfolios prominent an.
+  const portfolioCount = portfolios.length;
+  
+  // Ermittlung des aktuell ausgewählten Portfolio-Objekts für die Detailansicht
+  const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
 
   // --- BEDINGTES RENDERING: DETAILANSICHT ---
   if (selectedPortfolioId) {
     return (
       <div className="min-h-screen bg-slate-50">
-        <Navbar onLogout={onLogout} /> {/* Navbar bleibt auch in Details oben */}
+        <Navbar onLogout={onLogout} />
         <PortfolioDetail 
           portfolioId={selectedPortfolioId} 
+          // WICHTIG: Hier geben wir die Währung nach unten weiter
+          portfolioCurrency={selectedPortfolio?.currency || 'EUR'} 
           onBack={() => {
             setSelectedPortfolioId(null);
             fetchPortfolios();
@@ -96,7 +103,6 @@ export default function Dashboard({ onLogout }) {
   // --- NORMALES RENDERING: ÜBERSICHT ---
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      {/* 1. Die neue Navbar ersetzt den alten Header */}
       <Navbar onLogout={onLogout} />
 
       <main className="max-w-7xl mx-auto px-4 py-10">
@@ -113,8 +119,11 @@ export default function Dashboard({ onLogout }) {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          <StatCard title="Gesamtvermögen" value={totalNetWorth} />
-          <StatCard title="Portfolios" value={portfolios.length} isCurrency={false} />
+          {/* Hinweis: Gesamtvermögen macht nur Sinn, wenn alle Portfolios die gleiche Währung haben.
+            Vorerst nutzen wir hier EUR oder blenden es aus, bis das Backend alles umrechnet.
+          */}
+          <StatCard title="Aktive Portfolios" value={portfolioCount} isCurrency={false} />
+          <StatCard title="Währung Mix" value={Array.from(new Set(portfolios.map(p => p.currency))).join(', ') || '-'} isCurrency={false} />
           <StatCard title="Status" value="Live" isCurrency={false} />
         </div>
 
@@ -146,6 +155,7 @@ export default function Dashboard({ onLogout }) {
                 onClick={() => setSelectedPortfolioId(p.id)} 
                 className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all cursor-pointer group relative overflow-hidden"
               >
+                {/* Delete Button */}
                 <button 
                   onClick={(e) => {
                     e.stopPropagation(); 
@@ -159,18 +169,19 @@ export default function Dashboard({ onLogout }) {
                 </button>
 
                 <div className="bg-indigo-50 text-indigo-600 w-12 h-12 rounded-xl flex items-center justify-center mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                  </svg>
+                  <span className="font-bold text-xs">{p.currency}</span>
                 </div>
                 
                 <h4 className="text-lg font-bold text-slate-900 mb-1">{p.name}</h4>
-                <p className="text-sm text-slate-500 line-clamp-2 h-10 mb-6">{p.description || 'Keine Beschreibung.'}</p>
+                <p className="text-sm text-slate-500 line-clamp-2 h-10 mb-6">{p.description}</p>
                 
                 <div className="pt-5 border-t border-slate-50 flex justify-between items-end">
                   <div>
                     <span className="text-xs text-slate-400 font-bold uppercase">Wert</span>
-                    <p className="text-xl font-black text-slate-800">{formatCurrency(p.total_value || 0)}</p>
+                    {/* WICHTIG: Hier nutzen wir die Portfolio-eigene Währung für die Formatierung */}
+                    <p className="text-xl font-black text-slate-800">
+                      {formatCurrency(p.total_value || 0, p.currency)}
+                    </p>
                   </div>
                   <span className="text-indigo-600 font-bold text-sm group-hover:translate-x-1 transition-transform">Details →</span>
                 </div>

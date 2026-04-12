@@ -15,7 +15,8 @@ def create_portfolio(portfolio: PortfolioCreate, db: Session = Depends(get_db), 
     if existing_portfolio:
         raise HTTPException(status_code=400, detail="Portfolioname already exists")
 
-    new_portfolio = Portfolio(name=portfolio.name, user_id=current_user.id, description=portfolio.description)
+    new_portfolio = Portfolio(name=portfolio.name, user_id=current_user.id, description=portfolio.description, currency=portfolio.currency)
+    db.add(new_portfolio)
 
     db.add(new_portfolio)
     db.commit()
