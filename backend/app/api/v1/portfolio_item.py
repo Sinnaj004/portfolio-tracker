@@ -13,7 +13,6 @@ from ...services.asset_service import asset_service
 
 router = APIRouter()
 
-
 @router.post("/{portfolio_id}/items", response_model=PortfolioItemOut, status_code=status.HTTP_201_CREATED)
 def add_portfolio_item(
         portfolio_id: UUID,
@@ -31,7 +30,7 @@ def add_portfolio_item(
     asset = None
     current_live_price = None
 
-    # 2. Suche in lokaler DB
+    # 2. Suche in lokaler DB (Erster Check)
     if item_in.isin:
         asset = db.query(Asset).filter(Asset.isin == item_in.isin).first()
     if not asset and item_in.symbol:
@@ -45,26 +44,38 @@ def add_portfolio_item(
         if not external_data:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found externally")
 
-        current_live_price = external_data.get("current_price")
+        # --- NEU: ZWEITER CHECK NACH API-SUCHE ---
+        # Verhindert den Unique-Error, falls das gefundene Symbol (z.B. "DTE")
+        # bereits unter einem anderen Namen/Weg existiert.
+        asset = db.query(Asset).filter(Asset.symbol == external_data["symbol"].upper()).first()
 
-        asset = Asset(
-            symbol=external_data["symbol"].upper(),
-            name=external_data["name"],
-            asset_type=external_data["asset_type"],
-            currency=external_data["currency"],
-            isin=external_data.get("isin") or item_in.isin,
-            last_api_update=datetime.now()
-        )
-        db.add(asset)
-        db.flush()  # ID generieren
+        if not asset:
+            current_live_price = external_data.get("current_price")
+            asset = Asset(
+                symbol=external_data["symbol"].upper(),
+                name=external_data["name"],
+                asset_type=external_data["asset_type"],
+                currency=external_data["currency"],
+                isin=external_data.get("isin") or item_in.isin,
+                last_api_update=datetime.now()
+            )
+            db.add(asset)
+            db.flush()  # ID generieren
 
-        # Ersten Preis in Historie schreiben
-        if current_live_price:
-            new_price_entry = AssetPrice(asset_id=asset.id, price=current_live_price, timestamp=datetime.now())
-            db.add(new_price_entry)
+            # Ersten Preis in Historie schreiben
+            if current_live_price:
+                new_price_entry = AssetPrice(asset_id=asset.id, price=current_live_price, timestamp=datetime.now())
+                db.add(new_price_entry)
+        else:
+            print(f"DEBUG: Asset {asset.symbol} wurde nach API-Abgleich doch in DB gefunden (Update ISIN).")
+            # ISIN ergänzen, falls sie durch die neue Suche jetzt verfügbar ist
+            if not asset.isin and external_data.get("isin"):
+                asset.isin = external_data["isin"]
+
+            latest = asset.latest_price_record
+            current_live_price = latest.price if latest else external_data.get("current_price")
     else:
         print(f"DEBUG: Asset {asset.symbol} bereits vorhanden. Kein API-Call nötig.")
-        # Wir holen den Preis für die Response einfach aus der bestehenden Historie
         latest = asset.latest_price_record
         current_live_price = latest.price if latest else 0
 

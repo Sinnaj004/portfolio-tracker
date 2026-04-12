@@ -6,29 +6,27 @@ from sqlalchemy.orm import Session
 from app.models.models import Asset, AssetPrice
 from datetime import datetime
 from uuid import UUID
-from sqlalchemy import Numeric
 import time
+
 
 class AssetService:
     def __init__(self):
         self.openfigi_url = "https://api.openfigi.com/v2/mapping"
         self.openfigi_key = os.getenv("OPENFIGI_API_KEY")
 
-
     def get_current_price(self, symbol: str) -> Optional[float]:
         try:
             ticker = yf.Ticker(symbol)
-
-            # Wir erzwingen eine Session mit einem User-Agent
             session = requests.Session()
             session.headers.update({
-                                       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'})
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            })
             ticker.session = session
 
-            # Versuch es mit 'fast_info'
+            # Versuch 1: fast_info (schnell)
             price = ticker.fast_info.last_price
 
-            # Falls fast_info immer noch zickt, nimm den Ausweichweg:
+            # Versuch 2: History Fallback (zuverlässiger)
             if not price:
                 data = ticker.history(period="1d")
                 if not data.empty:
@@ -39,24 +37,42 @@ class AssetService:
             print(f"yfinance Price Error für {symbol}: {e}")
             return None
 
-    # --- Stammdaten-Suche ---
-    def search_external_asset(self, symbol: Optional[str] = None, isin: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    def search_external_asset(self, symbol: Optional[str] = None, isin: Optional[str] = None) -> Optional[
+        Dict[str, Any]]:
         query = isin if isin else symbol
         if not query:
             return None
 
-        # 1. Schritt: Stammdaten via OpenFIGI
-        external_data = self._get_openfigi_data(symbol, isin)
+        # 1. Schritt: yfinance Suche (Priorität wegen besserer regionaler Ticker)
+        external_data = self._get_yfinance_metadata(query)
+
+        # 2. Schritt: Falls yfinance nichts liefert -> OpenFIGI
+        if not external_data:
+            print(f"DEBUG: yfinance kein Treffer für {query}, versuche OpenFIGI...")
+            external_data = self._get_openfigi_data(symbol, isin)
+
         if not external_data:
             return None
 
-        # 2. Schritt: Preis über die neue separate Funktion holen
+        # 3. Schritt: Preis und Währung finalisieren
         ticker_symbol = external_data["symbol"]
+
+        # Nur wenn die Daten von OpenFIGI kamen, verifizieren wir die Währung nochmal via yfinance
+        # (da OpenFIGI oft USD als Standard liefert)
+        if external_data.get("source") == "openfigi":
+            try:
+                yf_ticker = yf.Ticker(ticker_symbol)
+                yf_currency = yf_ticker.info.get("currency")
+                if yf_currency:
+                    external_data["currency"] = yf_currency.upper()
+            except:
+                pass
+
         live_price = self.get_current_price(ticker_symbol)
         if live_price is not None:
             external_data["current_price"] = live_price
 
-        # 3. Schritt: Falls ISIN fehlt, via yfinance suchen
+        # 4. Schritt: Falls ISIN immer noch fehlt
         if not external_data.get("isin"):
             yf_isin = self._get_isin_via_yfinance(ticker_symbol)
             if yf_isin:
@@ -65,8 +81,12 @@ class AssetService:
         return external_data
 
     # --- Private Hilfsmethoden ---
+
     def _get_openfigi_data(self, symbol, isin):
-        job = {"idType": "ID_ISIN", "idValue": isin} if isin else {"idType": "TICKER", "idValue": symbol, "exchCode": "US"}
+        exch_code = "US"
+        job = {"idType": "ID_ISIN", "idValue": isin} if isin else {"idType": "TICKER", "idValue": symbol,
+                                                                   "exchCode": exch_code}
+
         try:
             headers = {'Content-Type': 'application/json'}
             if self.openfigi_key: headers['X-OPENFIGI-APIKEY'] = self.openfigi_key
@@ -82,10 +102,44 @@ class AssetService:
                         "asset_type": res.get("securityType", "equity").lower(),
                         "currency": "USD",
                         "isin": isin,
-                        "current_price": 0.0
+                        "current_price": 0.0,
+                        "source": "openfigi"
                     }
         except Exception as e:
             print(f"OpenFIGI Error: {e}")
+        return None
+
+    def _get_yfinance_metadata(self, query: str) -> Optional[Dict[str, Any]]:
+        """Optimierte Metadaten-Suche mit Fokus auf .DE Ticker bei deutschen ISINs."""
+        try:
+            target_ticker = query
+
+            # Speziallogik für deutsche ISINs
+            if len(query) == 12 and query.upper().startswith("DE"):
+                search = yf.Search(query, max_results=5)
+                for quote in search.quotes:
+                    symbol = quote.get("symbol", "")
+                    if symbol.endswith(".DE"):
+                        target_ticker = symbol
+                        break
+                if target_ticker == query and search.quotes:
+                    target_ticker = search.quotes[0].get("symbol")
+
+            ticker = yf.Ticker(target_ticker)
+            info = ticker.info
+
+            if info and 'symbol' in info:
+                return {
+                    "symbol": info.get("symbol").upper(),
+                    "name": info.get("longName") or info.get("shortName"),
+                    "asset_type": info.get("quoteType", "equity").lower(),
+                    "currency": info.get("currency", "USD").upper(),
+                    "isin": info.get("isin") or (query if len(query) == 12 else None),
+                    "current_price": 0.0,
+                    "source": "yfinance"
+                }
+        except Exception as e:
+            print(f"yfinance Metadata Error: {e}")
         return None
 
     def _get_isin_via_yfinance(self, symbol: str) -> Optional[str]:
@@ -98,38 +152,24 @@ class AssetService:
         return None
 
     def update_all_assets_prices(self, db: Session):
-        """Holt für alle bekannten Assets die aktuellen Kurse und speichert sie."""
         assets = db.query(Asset).all()
         updated_count = 0
-
-        print(f"DEBUG: Starte globales Preis-Update für {len(assets)} Assets...")
-
         for asset in assets:
             try:
-                # 1. API nach aktuellem Preis fragen
                 new_price = self.get_current_price(asset.symbol)
-
                 if new_price is not None:
-                    # 2. Neuen Preis in die Historie schreiben
                     price_entry = AssetPrice(
                         asset_id=asset.id,
                         price=new_price,
                         timestamp=datetime.now()
                     )
                     db.add(price_entry)
-
-                    # 3. Zeitstempel im Asset-Stamm hintelegen
                     asset.last_api_update = datetime.now()
                     updated_count += 1
-                    print(f"DEBUG: {asset.symbol} aktualisiert: {new_price}")
-
-                # Kurze Pause, um API-Limits (Rate Limiting) zu respektieren
                 time.sleep(0.5)
-
             except Exception as e:
-                print(f"FEHLER: Konnte {asset.symbol} nicht aktualisieren: {e}")
+                print(f"Update Fehler {asset.symbol}: {e}")
                 continue
-
         db.commit()
         return updated_count
 

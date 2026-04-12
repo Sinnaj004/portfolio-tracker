@@ -16,7 +16,7 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}`, {
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
       });
-      if (!response.ok) throw new Error("Fehler");
+      if (!response.ok) throw new Error("Fehler beim Laden der Details");
       const data = await response.json();
       setPortfolioItems(Array.isArray(data) ? data : []);
     } catch (err) {
@@ -35,6 +35,22 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // Hilfsberechnung für die Header-Metriken
+  const totals = portfolioItems.reduce((acc, item) => {
+    const qty = parseFloat(item.quantity || 0);
+    const avgCost = parseFloat(item.avg_cost_price || 0);
+    const currentPrice = parseFloat(item.asset?.current_price || 0);
+    
+    acc.totalEntry += qty * avgCost;
+    acc.totalMarket += qty * currentPrice;
+    return acc;
+  }, { totalEntry: 0, totalMarket: 0 });
+
+  const totalProfitLossEur = totals.totalMarket - totals.totalEntry;
+  const totalProfitLossPct = totals.totalEntry > 0 
+    ? (totalProfitLossEur / totals.totalEntry) * 100 
+    : 0;
+
   if (selectedItemId) {
     return (
       <PortfolioItemDetail 
@@ -49,12 +65,10 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
     );
   }
 
-  const totalValue = portfolioItems.reduce((sum, item) => sum + (parseFloat(item.quantity) * parseFloat(item.avg_cost_price)), 0);
-
   return (
     <div className="max-w-7xl mx-auto px-4 py-10 animate-in fade-in duration-500 relative">
       
-      {/* Toast-Anzeige (jetzt hier in der Liste) */}
+      {/* Toast Notification */}
       {toast && (
         <div className={`fixed top-10 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 rounded-2xl shadow-2xl font-bold text-white animate-in fade-in zoom-in ${toast.type === 'error' ? 'bg-rose-500' : 'bg-emerald-500'}`}>
           {toast.type === 'success' ? '✅ ' : '❌ '} {toast.message}
@@ -65,49 +79,128 @@ export default function PortfolioDetail({ portfolioId, onBack }) {
         <span>←</span> Zurück zur Übersicht
       </button>
 
+      {/* Hero-Kachel mit Metriken */}
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 mb-8">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Portfolio Assets</h2>
-        <div className="mt-8">
-          <span className="text-xs text-slate-400 font-black uppercase tracking-widest">Gesamtwert</span>
-          <div className="text-4xl font-black text-indigo-600 tabular-nums">{formatCurrency(totalValue)}</div>
+        <h2 className="text-3xl font-black text-slate-900 tracking-tight mb-8">Portfolio Performance</h2>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end">
+          {/* Aktueller Marktwert */}
+          <div className="space-y-1">
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Aktueller Depotwert</span>
+            <div className="text-4xl font-black text-indigo-600 tabular-nums">
+              {formatCurrency(totals.totalMarket)}
+            </div>
+          </div>
+
+          {/* Einstiegswert */}
+          <div className="space-y-1">
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Investiertes Kapital</span>
+            <div className="text-2xl font-bold text-slate-700 tabular-nums">
+              {formatCurrency(totals.totalEntry)}
+            </div>
+          </div>
+
+          {/* Gesamte Rendite */}
+          <div className="space-y-1">
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Gesamtrendite (G/V)</span>
+            <div className={`text-2xl font-black tabular-nums flex items-baseline gap-2 ${totalProfitLossEur >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              <span>{totalProfitLossEur >= 0 ? '+' : ''}{formatCurrency(totalProfitLossEur)}</span>
+              <span className={`text-xs px-2 py-1 rounded-lg font-bold ${totalProfitLossEur >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                {totalProfitLossPct >= 0 ? '+' : ''}{totalProfitLossPct.toFixed(2)}%
+              </span>
+            </div>
+          </div>
         </div>
       </div>
 
       <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-slate-800">Assets</h3>
-        <button onClick={() => setShowAddModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95">
+        <h3 className="text-xl font-bold text-slate-800">Übersicht</h3>
+        <button 
+          onClick={() => setShowAddModal(true)} 
+          className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95"
+        >
           + Asset hinzufügen
         </button>
       </div>
 
+      {/* Asset Tabelle */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[11px] uppercase font-black tracking-wider">
+          <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] uppercase font-black tracking-wider">
             <tr>
-              <th className="px-8 py-4">Asset</th>
-              <th className="px-6 py-4 text-right">Menge</th>
-              <th className="px-6 py-4 text-right">Wert</th>
-              <th className="px-6 py-4 text-center">Aktion</th>
+              <th className="px-6 py-4">Asset</th>
+              <th className="px-4 py-4 text-right">Menge</th>
+              <th className="px-4 py-4 text-right">Einstieg</th>
+              <th className="px-4 py-4 text-right">Kurswert</th>
+              <th className="px-4 py-4 text-right">Kurs</th>
+              <th className="px-6 py-4 text-right">G/V (%)</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {portfolioItems.map((item) => (
-              <tr key={item.id} onClick={() => setSelectedItemId(item.id)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
-                <td className="px-8 py-5 font-bold text-slate-900 group-hover:text-indigo-600">{item.asset?.name}</td>
-                <td className="px-6 py-5 tabular-nums text-right font-medium">{Number(item.quantity).toLocaleString()}</td>
-                <td className="px-6 py-5 font-black text-slate-900 tabular-nums text-right">
-                  {formatCurrency(parseFloat(item.quantity) * parseFloat(item.avg_cost_price))}
-                </td>
-                <td className="px-6 py-5 text-center">
-                   <span className="text-indigo-600 font-bold text-xs bg-indigo-50 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">Details →</span>
+            {portfolioItems.map((item) => {
+              const qty = parseFloat(item.quantity);
+              const avgCost = parseFloat(item.avg_cost_price);
+              const currentPrice = parseFloat(item.asset?.current_price || 0);
+              
+              const entryValue = qty * avgCost;
+              const marketValue = qty * currentPrice;
+              const profitLossPct = entryValue > 0 ? ((marketValue - entryValue) / entryValue) * 100 : 0;
+
+              return (
+                <tr 
+                  key={item.id} 
+                  onClick={() => setSelectedItemId(item.id)} 
+                  className="hover:bg-slate-50/50 transition-colors cursor-pointer group"
+                >
+                  <td className="px-6 py-5">
+                    <div className="font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
+                      {item.asset?.symbol}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-bold truncate max-w-[150px]">
+                      {item.asset?.name}
+                    </div>
+                  </td>
+                  <td className="px-4 py-5 tabular-nums text-right font-medium text-slate-600">
+                    {qty.toLocaleString()}
+                  </td>
+                  <td className="px-4 py-5 tabular-nums text-right text-slate-500 font-medium text-xs">
+                    {formatCurrency(entryValue)}
+                  </td>
+                  <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">
+                    {formatCurrency(marketValue)}
+                  </td>
+                  <td className="px-4 py-5 tabular-nums text-right text-[10px] text-slate-400 font-bold">
+                    {formatCurrency(currentPrice)}
+                  </td>
+                  <td className={`px-6 py-5 tabular-nums text-right font-black ${profitLossPct >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    <div className="text-sm">
+                      {profitLossPct >= 0 ? '+' : ''}{formatCurrency(marketValue - entryValue)}
+                    </div>
+                    <div className="text-[10px] opacity-80">
+                      {profitLossPct >= 0 ? '+' : ''}{profitLossPct.toFixed(2)}%
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {portfolioItems.length === 0 && (
+              <tr>
+                <td colSpan="6" className="px-6 py-10 text-center text-slate-400 font-medium">
+                  Noch keine Assets in diesem Portfolio.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
 
-      {showAddModal && <AddAssetModal portfolioId={portfolioId} onClose={() => setShowAddModal(false)} onRefresh={fetchDetails} />}
+      {showAddModal && (
+        <AddAssetModal 
+          portfolioId={portfolioId} 
+          onClose={() => setShowAddModal(false)} 
+          onRefresh={fetchDetails} 
+        />
+      )}
     </div>
   );
 }
