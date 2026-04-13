@@ -1,0 +1,27 @@
+name: Docker Build Check
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 1. Backend Check
+      - name: Build Backend Image
+        run: |
+          cd portfolio_backend
+          docker build . -t portfolio-backend:latest
+
+      # 2. Frontend Check
+      - name: Build Frontend Image
+        run: |
+          cd portfolio_frontend
+          docker build . -t portfolio-frontend:latest
