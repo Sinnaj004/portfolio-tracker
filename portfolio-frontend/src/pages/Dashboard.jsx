@@ -12,20 +12,18 @@ export default function Dashboard({ onLogout }) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Navigation State
   const [selectedPortfolioId, setSelectedPortfolioId] = useState(null);
-
-  // Modal States
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [portfolioToDelete, setPortfolioToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- API: Portfolios laden ---
+  // --- API: Dashboard Summary laden ---
   const fetchPortfolios = async () => {
     setIsLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio/`, {
+      // WICHTIG: Wir nutzen jetzt den neuen Summary Endpunkt
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/dashboard/summary`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -35,7 +33,7 @@ export default function Dashboard({ onLogout }) {
 
       if (!response.ok) {
         if (response.status === 401) onLogout();
-        throw new Error("Fehler beim Laden der Portfolios");
+        throw new Error("Fehler beim Laden der Dashboard-Daten");
       }
 
       const data = await response.json();
@@ -49,18 +47,14 @@ export default function Dashboard({ onLogout }) {
 
   const handleConfirmDelete = async () => {
     if (!portfolioToDelete) return;
-    
     setIsDeleting(true);
     const token = localStorage.getItem('token');
-    
     try {
       const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio/${portfolioToDelete.id}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });
-
       if (!response.ok) throw new Error("Löschen fehlgeschlagen.");
-
       setPortfolios(prev => prev.filter(p => p.id !== portfolioToDelete.id));
       setPortfolioToDelete(null);
     } catch (err) {
@@ -74,22 +68,17 @@ export default function Dashboard({ onLogout }) {
     fetchPortfolios();
   }, []);
 
-  // --- WÄHRUNGS-LOGIK ---
-  // Da Portfolios verschiedene Währungen haben können, ist eine Summe ohne Umrechnung schwierig.
-  // Wir zeigen hier erstmal die Anzahl der Portfolios prominent an.
-  const portfolioCount = portfolios.length;
-  
-  // Ermittlung des aktuell ausgewählten Portfolio-Objekts für die Detailansicht
   const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
 
-  // --- BEDINGTES RENDERING: DETAILANSICHT ---
+  // Hilfsfunktion für die Farblogik der Performance
+  const getPerformanceClass = (val) => val >= 0 ? "text-emerald-500" : "text-rose-500";
+
   if (selectedPortfolioId) {
     return (
       <div className="min-h-screen bg-slate-50">
         <Navbar onLogout={onLogout} />
         <PortfolioDetail 
           portfolioId={selectedPortfolioId} 
-          // WICHTIG: Hier geben wir die Währung nach unten weiter
           portfolioCurrency={selectedPortfolio?.currency || 'EUR'} 
           onBack={() => {
             setSelectedPortfolioId(null);
@@ -100,7 +89,6 @@ export default function Dashboard({ onLogout }) {
     );
   }
 
-  // --- NORMALES RENDERING: ÜBERSICHT ---
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       <Navbar onLogout={onLogout} />
@@ -108,7 +96,7 @@ export default function Dashboard({ onLogout }) {
       <main className="max-w-7xl mx-auto px-4 py-10">
         <div className="mb-10">
           <h2 className="text-3xl font-extrabold text-slate-900 tracking-tight">Deine Übersicht</h2>
-          <p className="text-slate-500 mt-1 font-medium">Verwalte deine Portfolios</p>
+          <p className="text-slate-500 mt-1 font-medium">Alle Portfolios auf einen Blick</p>
         </div>
 
         {error && (
@@ -118,13 +106,19 @@ export default function Dashboard({ onLogout }) {
           </div>
         )}
 
+        {/* --- DYNAMISCHE STATISTIKEN --- */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {/* Hinweis: Gesamtvermögen macht nur Sinn, wenn alle Portfolios die gleiche Währung haben.
-            Vorerst nutzen wir hier EUR oder blenden es aus, bis das Backend alles umrechnet.
-          */}
-          <StatCard title="Aktive Portfolios" value={portfolioCount} isCurrency={false} />
-          <StatCard title="Währung Mix" value={Array.from(new Set(portfolios.map(p => p.currency))).join(', ') || '-'} isCurrency={false} />
-          <StatCard title="Status" value="Live" isCurrency={false} />
+          <StatCard title="Aktive Portfolios" value={portfolios.length} isCurrency={false} />
+          <StatCard 
+            title="Investierte Assets" 
+            value={portfolios.reduce((sum, p) => sum + p.item_count, 0)} 
+            isCurrency={false} 
+          />
+          <StatCard 
+            title="Beste Performance" 
+            value={portfolios.length > 0 ? `${Math.max(...portfolios.map(p => p.profit_loss_pct))}%` : "-"} 
+            isCurrency={false} 
+          />
         </div>
 
         <div className="flex justify-between items-center mb-8">
@@ -141,7 +135,7 @@ export default function Dashboard({ onLogout }) {
           {isLoading ? (
             <div className="col-span-full py-20 text-center">
               <div className="animate-spin h-10 w-10 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-slate-400">Lade Portfolios...</p>
+              <p className="text-slate-400">Analysiere Daten...</p>
             </div>
           ) : portfolios.length === 0 ? (
             <div className="col-span-full bg-white p-12 rounded-3xl border-2 border-dashed border-slate-200 text-center">
@@ -153,7 +147,7 @@ export default function Dashboard({ onLogout }) {
               <div 
                 key={p.id} 
                 onClick={() => setSelectedPortfolioId(p.id)} 
-                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all cursor-pointer group relative overflow-hidden"
+                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all cursor-pointer group relative"
               >
                 {/* Delete Button */}
                 <button 
@@ -168,22 +162,31 @@ export default function Dashboard({ onLogout }) {
                   </svg>
                 </button>
 
-                <div className="bg-indigo-50 text-indigo-600 w-12 h-12 rounded-xl flex items-center justify-center mb-6 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                  <span className="font-bold text-xs">{p.currency}</span>
+                <div className="flex justify-between items-start mb-6">
+                  <div className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg font-bold text-xs">
+                    {p.currency}
+                  </div>
+                  <div className={`font-bold text-sm ${getPerformanceClass(p.profit_loss_pct)}`}>
+                    {p.profit_loss_pct >= 0 ? '+' : ''}{p.profit_loss_pct}%
+                  </div>
                 </div>
                 
                 <h4 className="text-lg font-bold text-slate-900 mb-1">{p.name}</h4>
-                <p className="text-sm text-slate-500 line-clamp-2 h-10 mb-6">{p.description}</p>
+                <p className="text-sm text-slate-400 mb-6">{p.item_count} Positionen</p>
                 
                 <div className="pt-5 border-t border-slate-50 flex justify-between items-end">
                   <div>
-                    <span className="text-xs text-slate-400 font-bold uppercase">Wert</span>
-                    {/* WICHTIG: Hier nutzen wir die Portfolio-eigene Währung für die Formatierung */}
+                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Aktueller Wert</span>
                     <p className="text-xl font-black text-slate-800">
-                      {formatCurrency(p.total_value || 0, p.currency)}
+                      {formatCurrency(p.total_value, p.currency)}
                     </p>
                   </div>
-                  <span className="text-indigo-600 font-bold text-sm group-hover:translate-x-1 transition-transform">Details →</span>
+                  <div className="text-right">
+                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Profit</span>
+                    <p className={`text-sm font-bold ${getPerformanceClass(p.profit_loss_abs)}`}>
+                      {p.profit_loss_abs >= 0 ? '+' : ''}{formatCurrency(p.profit_loss_abs, p.currency)}
+                    </p>
+                  </div>
                 </div>
               </div>
             ))
