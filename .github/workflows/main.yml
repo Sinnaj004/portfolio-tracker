@@ -27,5 +27,5 @@ jobs:
       # 2. Frontend Check
       - name: Build Frontend Image
         run: |
-          cd portfolio_frontend
+          cd portfolio-frontend
           docker build . -t portfolio-frontend:latest
