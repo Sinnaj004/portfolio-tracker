@@ -22,7 +22,7 @@ jobs:
       - name: Build Backend Image
         run: |
           cd portfolio_backend
-          docker build . -t portfolio-backend:latest
+          docker build . -t backend:latest
 
       # 2. Frontend Check
       - name: Build Frontend Image
