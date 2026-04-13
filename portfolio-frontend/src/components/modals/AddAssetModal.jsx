@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 
-export default function AddAssetModal({ portfolioId, onClose, onRefresh }) {
+// 1. portfolioCurrency oben in den Props aufnehmen
+export default function AddAssetModal({ portfolioId, portfolioCurrency, onClose, onRefresh }) {
   const [symbol, setSymbol] = useState('');
   const [isin, setIsin] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -12,7 +13,6 @@ export default function AddAssetModal({ portfolioId, onClose, onRefresh }) {
     e.preventDefault();
     setError('');
     
-    // Validierung: Mindestens eines der beiden Felder muss befüllt sein
     if (!symbol && !isin) {
       setError('Bitte gib entweder ein Symbol (Ticker) oder eine ISIN an.');
       return;
@@ -21,7 +21,6 @@ export default function AddAssetModal({ portfolioId, onClose, onRefresh }) {
     setIsLoading(true);
     const token = localStorage.getItem('token');
 
-    // Die vom Backend erwartete Struktur
     const payload = {
       quantity: parseFloat(quantity) || 0,
       avg_cost_price: parseFloat(avgCostPrice) || 0,
@@ -55,6 +54,13 @@ export default function AddAssetModal({ portfolioId, onClose, onRefresh }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      {/* CSS um Pfeile in den Zahlenfeldern zu entfernen */}
+      <style>{`
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+      `}</style>
+
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
           <h3 className="text-xl font-bold text-slate-800">Asset hinzufügen</h3>
@@ -75,7 +81,7 @@ export default function AddAssetModal({ portfolioId, onClose, onRefresh }) {
                 type="text" 
                 value={symbol}
                 onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none transition-all"
+                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none transition-all uppercase"
                 placeholder="z.B. AAPL"
               />
             </div>
@@ -85,7 +91,7 @@ export default function AddAssetModal({ portfolioId, onClose, onRefresh }) {
                 type="text" 
                 value={isin}
                 onChange={(e) => setIsin(e.target.value.toUpperCase())}
-                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none transition-all"
+                className="w-full px-4 py-2 rounded-xl border border-slate-200 focus:border-indigo-500 outline-none transition-all uppercase"
                 placeholder="US0378331005"
               />
             </div>
@@ -105,7 +111,8 @@ export default function AddAssetModal({ portfolioId, onClose, onRefresh }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-1">Kaufpreis (€)</label>
+              {/* HIER: Dynamische Währung im Label anzeigen */}
+              <label className="block text-sm font-bold text-slate-700 mb-1">Kaufpreis ({portfolioCurrency})</label>
               <input 
                 type="number" 
                 step="any"

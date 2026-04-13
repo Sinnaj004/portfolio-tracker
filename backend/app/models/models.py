@@ -59,9 +59,11 @@ class PortfolioItem(Base):
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"))
     quantity = Column(Numeric(precision=18, scale=8), nullable=False) # Präzise für Krypto
     avg_cost_price = Column(Numeric(precision=18, scale=4))
+    avg_exchange_rate = Column(Numeric(precision=18, scale=8))
 
     portfolio = relationship("Portfolio", back_populates="items")
     asset = relationship("Asset")
+
 
 
 class Transaction(Base):
