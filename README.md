@@ -18,6 +18,17 @@ Key problems this application solves:
 * **Currency Intelligence:** Automatic EUR/USD conversion using live exchange rates, allowing for seamless tracking of international assets.
 * **Sophisticated Analytics:** Instant calculation of absolute and relative performance (Profit/Loss), entry value, and current market value.
 
+## 📸 Screenshots
+
+### Dashboard Overview
+![Main Dashboard](./docs/screenshots/Dashboard.png)
+
+### Portfolio Analysis
+<p align="center">
+  <img src="./docs/screenshots/PortfolioOverview.png" width="45%" />
+  <img src="./docs/screenshots/PortfolioItemDetail.png" width="45%" />
+</p>
+
 ## 🛠 Tech Stack
 
 ### Backend
