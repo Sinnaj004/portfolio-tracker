@@ -10,11 +10,7 @@ router = APIRouter()
 
 
 @router.post("/refresh-prices", status_code=status.HTTP_200_OK)
-def refresh_all_prices(
-        background_tasks: BackgroundTasks,
-        db: Session = Depends(get_db),
-        current_admin: User = Depends(get_current_admin_user)
-):
+def refresh_all_prices(background_tasks: BackgroundTasks, db: Session = Depends(get_db), current_admin: User = Depends(get_current_admin_user)):
     # Die Funktion wird "gequeued" und sofort 202 zurückgegeben
     background_tasks.add_task(asset_service.update_all_assets_prices, db)
 

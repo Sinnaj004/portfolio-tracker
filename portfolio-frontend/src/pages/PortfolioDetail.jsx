@@ -18,7 +18,17 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
       });
       if (!response.ok) throw new Error("Fehler beim Laden der Details");
       const data = await response.json();
-      setPortfolioItems(Array.isArray(data) ? data : []);
+      
+      let items = Array.isArray(data) ? data : [];
+
+      // --- ALPHABETISCHE SORTIERUNG NACH SYMBOL ---
+      items.sort((a, b) => {
+        const symbolA = (a.asset?.symbol || "").toUpperCase();
+        const symbolB = (b.asset?.symbol || "").toUpperCase();
+        return symbolA.localeCompare(symbolB);
+      });
+
+      setPortfolioItems(items);
     } catch (err) {
       console.error(err);
     } finally {
@@ -50,17 +60,16 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
     ? (totalProfitLoss / totals.totalEntry) * 100 
     : 0;
 
-  // Helfer für dynamische Farben (Header)
   const getHeaderColorClass = (value) => {
-    if (value > 0) return 'text-emerald-500';
-    if (value < 0) return 'text-rose-500';
-    return 'text-slate-900'; // Schwarz/Neutral für 0
+    if (value > 0.01) return 'text-emerald-500';
+    if (value < -0.01) return 'text-rose-500';
+    return 'text-slate-900';
   };
 
   const getHeaderBadgeClass = (value) => {
-    if (value > 0) return 'bg-emerald-50 text-emerald-600';
-    if (value < 0) return 'bg-rose-50 text-rose-600';
-    return 'bg-slate-100 text-slate-600'; // Neutral für 0
+    if (value > 0.01) return 'bg-emerald-50 text-emerald-600';
+    if (value < -0.01) return 'bg-rose-50 text-rose-600';
+    return 'bg-slate-100 text-slate-600';
   };
 
   if (selectedItemId) {
@@ -112,9 +121,9 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
           <div className="space-y-1">
             <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Gesamtrendite (G/V)</span>
             <div className={`text-2xl font-black tabular-nums flex items-baseline gap-2 ${getHeaderColorClass(totalProfitLoss)}`}>
-              <span>{totalProfitLoss > 0 ? '+' : ''}{formatCurrency(totalProfitLoss, portfolioCurrency)}</span>
+              <span>{totalProfitLoss > 0.01 ? '+' : ''}{formatCurrency(totalProfitLoss, portfolioCurrency)}</span>
               <span className={`text-xs px-2 py-1 rounded-lg font-bold ${getHeaderBadgeClass(totalProfitLoss)}`}>
-                {totalProfitLoss > 0 ? '+' : ''}{totalProfitLossPct.toFixed(2)}%
+                {totalProfitLoss > 0.01 ? '+' : ''}{totalProfitLossPct.toFixed(2)}%
               </span>
             </div>
           </div>
@@ -132,68 +141,79 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] uppercase font-black tracking-wider">
-            <tr>
-              <th className="px-6 py-4">Asset</th>
-              <th className="px-4 py-4 text-right">Menge</th>
-              <th className="px-4 py-4 text-right">Einstiegswert</th>
-              <th className="px-4 py-4 text-right">Marktwert</th>
-              <th className="px-4 py-4 text-right">Kurs</th>
-              <th className="px-6 py-4 text-right">G/V (%)</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-50">
-            {portfolioItems.map((item) => {
-              const qty = parseFloat(item.quantity || 0);
-              const avgCost = parseFloat(item.avg_cost_price || 0);
-              const currentPrice = parseFloat(item.asset?.current_price || 0);
-              
-              const entryValue = qty * avgCost;
-              const marketValue = qty * currentPrice;
-              const profitLoss = marketValue - entryValue;
-              const profitLossPct = entryValue > 0 ? (profitLoss / entryValue) * 100 : 0;
-
-              // Dynamische Farbauswahl für die Tabelle
-              let rowColorClass = 'text-slate-900'; // Default (0)
-              if (profitLoss > 0.001) rowColorClass = 'text-emerald-500';
-              if (profitLoss < -0.001) rowColorClass = 'text-rose-500';
-
-              return (
-                <tr key={item.id} onClick={() => setSelectedItemId(item.id)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
-                  <td className="px-6 py-5">
-                    <div className="font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
-                      {item.asset?.symbol}
-                    </div>
-                    <div className="text-[10px] text-slate-400 font-bold truncate max-w-[150px]">
-                      {item.asset?.name}
-                    </div>
-                  </td>
-                  <td className="px-4 py-5 tabular-nums text-right font-medium text-slate-600">
-                    {qty.toLocaleString()}
-                  </td>
-                  <td className="px-4 py-5 tabular-nums text-right text-slate-500 font-medium text-xs">
-                    {formatCurrency(entryValue, portfolioCurrency)}
-                  </td>
-                  <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">
-                    {formatCurrency(marketValue, portfolioCurrency)}
-                  </td>
-                  <td className="px-4 py-5 tabular-nums text-right text-[10px] text-slate-400 font-bold">
-                    {formatCurrency(currentPrice, portfolioCurrency)}
-                  </td>
-                  <td className={`px-6 py-5 tabular-nums text-right font-black ${rowColorClass}`}>
-                    <div className="text-sm">
-                      {profitLoss > 0.001 ? '+' : ''}{formatCurrency(profitLoss, portfolioCurrency)}
-                    </div>
-                    <div className="text-[10px] opacity-80">
-                      {profitLoss > 0.001 ? '+' : ''}{profitLossPct.toFixed(2)}%
-                    </div>
-                  </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] uppercase font-black tracking-wider">
+              <tr>
+                <th className="px-6 py-4">Asset</th>
+                <th className="px-4 py-4 text-right">Menge</th>
+                <th className="px-4 py-4 text-right">Einstiegswert</th>
+                <th className="px-4 py-4 text-right">Marktwert</th>
+                <th className="px-4 py-4 text-right">Kurs</th>
+                <th className="px-6 py-4 text-right">G/V (%)</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {isLoading ? (
+                <tr>
+                  <td colSpan="6" className="py-20 text-center text-slate-400 font-medium">Lade Assets...</td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
+              ) : portfolioItems.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="py-20 text-center text-slate-400 font-medium">Noch keine Assets vorhanden.</td>
+                </tr>
+              ) : (
+                portfolioItems.map((item) => {
+                  const qty = parseFloat(item.quantity || 0);
+                  const avgCost = parseFloat(item.avg_cost_price || 0);
+                  const currentPrice = parseFloat(item.asset?.current_price || 0);
+                  
+                  const entryValue = qty * avgCost;
+                  const marketValue = qty * currentPrice;
+                  const profitLoss = marketValue - entryValue;
+                  const profitLossPct = entryValue > 0 ? (profitLoss / entryValue) * 100 : 0;
+
+                  let rowColorClass = 'text-slate-900';
+                  if (profitLoss > 0.001) rowColorClass = 'text-emerald-500';
+                  if (profitLoss < -0.001) rowColorClass = 'text-rose-500';
+
+                  return (
+                    <tr key={item.id} onClick={() => setSelectedItemId(item.id)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
+                      <td className="px-6 py-5">
+                        <div className="font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
+                          {item.asset?.symbol}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold truncate max-w-[150px]">
+                          {item.asset?.name}
+                        </div>
+                      </td>
+                      <td className="px-4 py-5 tabular-nums text-right font-medium text-slate-600">
+                        {qty.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-5 tabular-nums text-right text-slate-500 font-medium text-xs">
+                        {formatCurrency(entryValue, portfolioCurrency)}
+                      </td>
+                      <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">
+                        {formatCurrency(marketValue, portfolioCurrency)}
+                      </td>
+                      <td className="px-4 py-5 tabular-nums text-right text-[10px] text-slate-400 font-bold">
+                        {formatCurrency(currentPrice, portfolioCurrency)}
+                      </td>
+                      <td className={`px-6 py-5 tabular-nums text-right font-black ${rowColorClass}`}>
+                        <div className="text-sm">
+                          {profitLoss > 0.001 ? '+' : ''}{formatCurrency(profitLoss, portfolioCurrency)}
+                        </div>
+                        <div className="text-[10px] opacity-80">
+                          {profitLoss > 0.001 ? '+' : ''}{profitLossPct.toFixed(2)}%
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {showAddModal && (

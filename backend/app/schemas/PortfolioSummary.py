@@ -1,11 +1,13 @@
 from pydantic import BaseModel
 from uuid import UUID
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
+
 
 class PortfolioSummary(BaseModel):
     id: UUID
     name: str
+    description: Optional[str] = None
     currency: str
     total_value: Decimal        # Aktueller Marktwert in Portfolio-Währung
     total_invested: Decimal     # Summe der Einstandskosten in Portfolio-Währung

@@ -22,7 +22,6 @@ export default function Dashboard({ onLogout }) {
     setIsLoading(true);
     const token = localStorage.getItem('token');
     try {
-      // WICHTIG: Wir nutzen jetzt den neuen Summary Endpunkt
       const response = await fetch(`${import.meta.env.VITE_API_URL}/dashboard/summary`, {
         method: "GET",
         headers: {
@@ -70,8 +69,9 @@ export default function Dashboard({ onLogout }) {
 
   const selectedPortfolio = portfolios.find(p => p.id === selectedPortfolioId);
 
-  // Hilfsfunktion für die Farblogik der Performance
-  const getPerformanceClass = (val) => val >= 0 ? "text-emerald-500" : "text-rose-500";
+  // Hilfsfunktion für die Farblogik
+  const getPerformanceClass = (val) => val >= 0 ? "text-emerald-600" : "text-rose-600";
+  const getBadgeClass = (val) => val >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700";
 
   if (selectedPortfolioId) {
     return (
@@ -147,7 +147,7 @@ export default function Dashboard({ onLogout }) {
               <div 
                 key={p.id} 
                 onClick={() => setSelectedPortfolioId(p.id)} 
-                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all cursor-pointer group relative"
+                className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:border-indigo-200 transition-all cursor-pointer group relative overflow-hidden"
               >
                 {/* Delete Button */}
                 <button 
@@ -162,30 +162,39 @@ export default function Dashboard({ onLogout }) {
                   </svg>
                 </button>
 
+                {/* Badge für Währung */}
                 <div className="flex justify-between items-start mb-6">
-                  <div className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg font-bold text-xs">
+                  <div className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg font-bold text-[10px] uppercase tracking-wider">
                     {p.currency}
-                  </div>
-                  <div className={`font-bold text-sm ${getPerformanceClass(p.profit_loss_pct)}`}>
-                    {p.profit_loss_pct >= 0 ? '+' : ''}{p.profit_loss_pct}%
                   </div>
                 </div>
                 
-                <h4 className="text-lg font-bold text-slate-900 mb-1">{p.name}</h4>
-                <p className="text-sm text-slate-400 mb-6">{p.item_count} Positionen</p>
+                <h4 className="text-lg font-bold text-slate-900 mb-1 leading-tight">{p.name}</h4>
+                {/* Beschreibung statt Positionen - mit Zeilenbegrenzung */}
+                <p className="text-sm text-slate-400 mb-6 line-clamp-2 h-10">
+                  {p.description}
+                </p>
                 
-                <div className="pt-5 border-t border-slate-50 flex justify-between items-end">
-                  <div>
-                    <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Aktueller Wert</span>
-                    <p className="text-xl font-black text-slate-800">
-                      {formatCurrency(p.total_value, p.currency)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Profit</span>
-                    <p className={`text-sm font-bold ${getPerformanceClass(p.profit_loss_abs)}`}>
-                      {p.profit_loss_abs >= 0 ? '+' : ''}{formatCurrency(p.profit_loss_abs, p.currency)}
-                    </p>
+                <div className="pt-5 border-t border-slate-50">
+                  <div className="flex justify-between items-end">
+                    <div>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Aktueller Wert</span>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xl font-black text-slate-800">
+                          {formatCurrency(p.total_value, p.currency)}
+                        </p>
+                        <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-md ${getBadgeClass(p.profit_loss_pct)}`}>
+                          {p.profit_loss_pct >= 0 ? '+' : ''}{p.profit_loss_pct}%
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Profit</span>
+                      <p className={`text-sm font-bold ${getPerformanceClass(p.profit_loss_abs)}`}>
+                        {p.profit_loss_abs >= 0 ? '+' : ''}{formatCurrency(p.profit_loss_abs, p.currency)}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
