@@ -19,3 +19,13 @@ class PortfolioOut(Portfolio):
 
     class Config:
         from_attributes = True
+
+class PortfolioPerformanceEntry(BaseModel):
+    timestamp: datetime
+    actual_value: float
+    invested_amount: float
+    profit_loss: float
+    profit_loss_pct: float
+
+    class Config:
+        from_attributes = True
