@@ -34,6 +34,10 @@ def get_portfolio_transactions(
         Transaction.portfolio_id == portfolio_id
     ).order_by(Transaction.transaction_date.desc()).all()
 
+    for transaction in transactions:
+        transaction.total_amount = transaction.total_amount * transaction.exchange_rate
+        transaction.price_per_unit *= transaction.exchange_rate
+
     # Mapping der Asset-Informationen in das Schema
     for tx in transactions:
         tx.asset_name = tx.asset.name

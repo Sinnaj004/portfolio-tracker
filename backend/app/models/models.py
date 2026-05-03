@@ -73,12 +73,11 @@ class Transaction(Base):
 
     type = Column(String, nullable=False)  # "BUY", "SELL", "DIVIDEND"
     quantity = Column(Numeric(18, 8), nullable=False)
-    price_per_unit = Column(Numeric(18, 4), nullable=False)
+    price_per_unit = Column(Numeric(18, 4), nullable=False) #orginal currency
     fees = Column(Numeric(18, 4), default=0.0)
-    total_amount = Column(Numeric(18, 4))
+    total_amount = Column(Numeric(18, 4)) #total original currency
     currency = Column(String, default="EUR")
-    exchange_rate = Column(Numeric(18, 6), default=1.0)
-    # Geändert: timezone=True und lambda
+    exchange_rate = Column(Numeric(18, 6), default=1.0) #rate at buy date
     transaction_date = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     realized_pnl = Column(Numeric(18, 4), nullable=True)
@@ -91,7 +90,6 @@ class AssetPrice(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
     price = Column(Numeric(16, 8), nullable=False)
-    # Geändert: timezone=True und lambda
     timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
     asset = relationship("Asset", back_populates="prices")

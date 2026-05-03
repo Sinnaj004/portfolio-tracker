@@ -8,6 +8,9 @@ from apscheduler.triggers.interval import IntervalTrigger  # Neu für saubere Tr
 from .db.session import SessionLocal
 from datetime import datetime, timezone  # timezone importiert
 from .services.asset_service import asset_service
+from.services.snapshot_service import portfolio_service
+from apscheduler.triggers.cron import CronTrigger
+import logging
 
 # Erstellt alle Tabellen in Postgres
 Base.metadata.create_all(bind=engine)
@@ -25,22 +28,52 @@ def scheduled_price_update():
         db.close()
 
 
+def scheduled_portfolio_snapshots():
+    db = SessionLocal()
+    try:
+        now_utc = datetime.now(timezone.utc)
+        print(f"[{now_utc}] 📸 Starte automatische Portfolio-Snapshots...")
+
+        all_portfolios = portfolio_service.get_all_portfolios(db)
+
+        for p in all_portfolios:
+            portfolio_service.create_portfolio_snapshot(db, portfolio_id=p.id)
+
+        print(f"[{now_utc}] ✅ Alle Snapshots erfolgreich erstellt.")
+    except Exception as e:
+        print(f"🚨 Fehler beim Snapshot-Job: {e}")
+    finally:
+        db.close()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # --- STARTUP ---
-    # Dem Scheduler explizit sagen, dass er in UTC arbeiten soll
+    # 1. Scheduler initialisieren
     scheduler = BackgroundScheduler(timezone="UTC")
 
-    # Job hinzufügen: Interval 30 Min, Startzeit ist JETZT in UTC
+    # 2. Preis-Update (Alle 30 Min)
     scheduler.add_job(
         scheduled_price_update,
         trigger=IntervalTrigger(minutes=30),
-        next_run_time=datetime.now(timezone.utc)
+        next_run_time=datetime.now(timezone.utc),
+        id="price_update_task"
+    )
+
+    # 3. Snapshot-Job (Täglich)
+    # Wir fügen 'next_run_time=datetime.now(timezone.utc)' hinzu,
+    # damit er SOFORT beim Start einmal läuft zum Testen!
+    scheduler.add_job(
+        scheduled_portfolio_snapshots,
+        trigger=CronTrigger(hour=10, minute=25),  # Deine Zielzeit
+        next_run_time=datetime.now(timezone.utc),  # <--- TEST-TRIGGER
+        id="daily_snapshot_task"
     )
 
     scheduler.start()
+    print("🚀 APScheduler gestartet: Preis-Updates (30m) und Daily Snapshots aktiv.")
+
     yield
-    # --- SHUTDOWN ---
+
     scheduler.shutdown()
 
 

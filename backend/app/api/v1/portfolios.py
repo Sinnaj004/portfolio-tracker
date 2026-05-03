@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone # timezone hinzugefügt
 from app.api.deps import get_db, get_current_user
 from app.models.models import Portfolio, User, PortfolioValue
 from app.schemas.portfolio import PortfolioCreate, PortfolioOut, PortfolioPerformanceEntry
-from app.services.snapshot_service import create_portfolio_snapshot
+from app.services.snapshot_service import portfolio_service
 
 router = APIRouter()
 
@@ -43,7 +43,7 @@ def trigger_portfolio_snapshot(
 
     # 2. Snapshot erstellen
     try:
-        snapshot = create_portfolio_snapshot(db, portfolio_id=portfolio_id)
+        snapshot = portfolio_service.create_portfolio_snapshot(db, portfolio_id=portfolio_id)
         return {
             "message": "Snapshot erfolgreich erstellt",
             "timestamp": snapshot.timestamp,

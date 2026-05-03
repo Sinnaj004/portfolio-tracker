@@ -3,21 +3,24 @@ import { formatCurrency } from '../utils/formatters';
 import AddAssetModal from '../components/modals/AddAssetModal';
 import PortfolioItemDetail from './PortfolioItemDetail';
 import Portfoliochart_ApexChart from '../components/charts/Portfoliochart_ApexChart';
+import TransactionHistoryTable from '../components/PortfolioDetail/TransactionHistoryTable'; // Die neue Komponente
 
 export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack }) {
   const [portfolioItems, setPortfolioItems] = useState([]);
-  const [performanceData, setPerformanceData] = useState([]); // Neu: Für den Chart
+  const [performanceData, setPerformanceData] = useState([]);
   const [selectedItemId, setSelectedItemId] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState(null);
-  const [days, setDays] = useState(30); // Neu: Zeitraum-Filter
+  const [days, setDays] = useState(30);
+  const [activeTab, setActiveTab] = useState('assets'); // Tab-Steuerung: 'assets' oder 'history'
 
   const fetchDetails = async () => {
     const token = localStorage.getItem('token');
     const apiUrl = import.meta.env.VITE_API_URL;
 
     try {
+      setIsLoading(true);
       // 1. Assets laden
       const itemsRes = await fetch(`${apiUrl}/portfolio_item/${portfolioId}`, {
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
@@ -26,14 +29,10 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
       const itemsData = await itemsRes.json();
       
       let items = Array.isArray(itemsData) ? itemsData : [];
-      items.sort((a, b) => {
-        const symbolA = (a.asset?.symbol || "").toUpperCase();
-        const symbolB = (b.asset?.symbol || "").toUpperCase();
-        return symbolA.localeCompare(symbolB);
-      });
+      items.sort((a, b) => (a.asset?.symbol || "").localeCompare(b.asset?.symbol || ""));
       setPortfolioItems(items);
 
-      // 2. Performance-Snapshots für den Chart laden
+      // 2. Performance-Snapshots laden
       const perfRes = await fetch(`${apiUrl}/portfolio/${portfolioId}/performance?days=${days}`, {
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
       });
@@ -41,7 +40,6 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
         const perfData = await perfRes.json();
         setPerformanceData(perfData);
       }
-
     } catch (err) {
       console.error(err);
       showToast("Daten konnten nicht geladen werden", "error");
@@ -50,7 +48,6 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
     }
   };
 
-  // Lädt Daten neu, wenn sich die ID oder der Zeitraum (days) ändert
   useEffect(() => {
     fetchDetails();
   }, [portfolioId, days]);
@@ -60,33 +57,18 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Berechnungen für die Kopfzeile
+  // Berechnungen für die Header-Metriken
   const totals = portfolioItems.reduce((acc, item) => {
     const qty = parseFloat(item.quantity || 0);
     const avgCost = parseFloat(item.avg_cost_price || 0);
     const currentPrice = parseFloat(item.asset?.current_price || 0);
-    
     acc.totalEntry += qty * avgCost;
     acc.totalMarket += qty * currentPrice;
     return acc;
   }, { totalEntry: 0, totalMarket: 0 });
 
   const totalProfitLoss = totals.totalMarket - totals.totalEntry;
-  const totalProfitLossPct = totals.totalEntry > 0 
-    ? (totalProfitLoss / totals.totalEntry) * 100 
-    : 0;
-
-  const getHeaderColorClass = (value) => {
-    if (value > 0.01) return 'text-emerald-500';
-    if (value < -0.01) return 'text-rose-500';
-    return 'text-slate-900';
-  };
-
-  const getHeaderBadgeClass = (value) => {
-    if (value > 0.01) return 'bg-emerald-50 text-emerald-600';
-    if (value < -0.01) return 'bg-rose-50 text-rose-600';
-    return 'bg-slate-100 text-slate-600';
-  };
+  const totalProfitLossPct = totals.totalEntry > 0 ? (totalProfitLoss / totals.totalEntry) * 100 : 0;
 
   if (selectedItemId) {
     return (
@@ -116,173 +98,121 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
         <span>←</span> Zurück zur Übersicht
       </button>
 
-      {/* --- PERFORMANCE SECTION MIT CHART --- */}
+      {/* --- CHART SECTION --- */}
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 mb-8">
         <div className="flex justify-between items-start mb-8">
           <div>
             <h2 className="text-3xl font-black text-slate-900 tracking-tight">Portfolio Analyse</h2>
             <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-1">Zeitverlauf & Rendite</p>
           </div>
-          
-          {/* Zeitraum-Filter */}
           <div className="flex bg-slate-100 p-1 rounded-xl">
             {[7, 30, 90, 365].map((d) => (
-              <button
-                key={d}
-                onClick={() => setDays(d)}
-                className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${
-                  days === d 
-                    ? 'bg-white shadow-sm text-indigo-600' 
-                    : 'text-slate-400 hover:text-slate-600'
-                }`}
-              >
+              <button key={d} onClick={() => setDays(d)} className={`px-4 py-1.5 rounded-lg text-xs font-black transition-all ${days === d ? 'bg-white shadow-sm text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}>
                 {d === 365 ? '1J' : `${d}D`}
               </button>
             ))}
           </div>
         </div>
 
-        {/* ApexChart Integration */}
         <div className="mb-10 w-full">
           {isLoading ? (
-            <div className="h-[350px] flex items-center justify-center bg-slate-50 rounded-2xl animate-pulse text-slate-400 text-sm font-bold">
-              Lade Chart-Daten...
-            </div>
-          ) : performanceData.length > 1 ? (
-            <Portfoliochart_ApexChart 
-              performanceData={performanceData} 
-              portfolioCurrency={portfolioCurrency} 
-            />
+            <div className="h-[350px] flex items-center justify-center bg-slate-50 rounded-2xl animate-pulse text-slate-400 text-sm font-bold">Lade Chart-Daten...</div>
           ) : (
-            <div className="h-[350px] flex flex-col items-center justify-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 text-slate-400 text-sm px-10 text-center">
-              <p className="font-bold mb-1">Keine Historie verfügbar</p>
-              <p className="text-xs opacity-70">Es werden mindestens zwei Snapshots benötigt, um einen Trend anzuzeigen.</p>
-            </div>
+            <Portfoliochart_ApexChart performanceData={performanceData} portfolioCurrency={portfolioCurrency} />
           )}
         </div>
         
-        {/* Summen-Metriken */}
+        {/* Metriken */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end border-t border-slate-100 pt-8">
-          <div className="space-y-1">
-            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Aktueller Depotwert</span>
-            <div className="text-4xl font-black text-indigo-600 tabular-nums">
-              {formatCurrency(totals.totalMarket, portfolioCurrency)}
-            </div>
+          <div>
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Depotwert</span>
+            <div className="text-4xl font-black text-indigo-600 tabular-nums">{formatCurrency(totals.totalMarket, portfolioCurrency)}</div>
           </div>
-
-          <div className="space-y-1">
-            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Investiertes Kapital</span>
-            <div className="text-2xl font-bold text-slate-700 tabular-nums">
-              {formatCurrency(totals.totalEntry, portfolioCurrency)}
-            </div>
+          <div>
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Investiert</span>
+            <div className="text-2xl font-bold text-slate-700 tabular-nums">{formatCurrency(totals.totalEntry, portfolioCurrency)}</div>
           </div>
-
-          <div className="space-y-1">
-            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Gesamtrendite (G/V)</span>
-            <div className={`text-2xl font-black tabular-nums flex items-baseline gap-2 ${getHeaderColorClass(totalProfitLoss)}`}>
-              <span>{totalProfitLoss > 0.01 ? '+' : ''}{formatCurrency(totalProfitLoss, portfolioCurrency)}</span>
-              <span className={`text-xs px-2 py-1 rounded-lg font-bold ${getHeaderBadgeClass(totalProfitLoss)}`}>
-                {totalProfitLoss > 0.01 ? '+' : ''}{totalProfitLossPct.toFixed(2)}%
+          <div>
+            <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Rendite</span>
+            <div className={`text-2xl font-black tabular-nums flex items-baseline gap-2 ${totalProfitLoss >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+              {formatCurrency(totalProfitLoss, portfolioCurrency)}
+              <span className={`text-xs px-2 py-1 rounded-lg font-bold ${totalProfitLoss >= 0 ? 'bg-emerald-50' : 'bg-rose-50'}`}>
+                {totalProfitLossPct.toFixed(2)}%
               </span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* --- ASSET LISTE --- */}
-      <div className="flex justify-between items-center mb-6">
-        <h3 className="text-xl font-bold text-slate-800">Einzelwerte</h3>
-        <button 
-          onClick={() => setShowAddModal(true)} 
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95 text-sm"
-        >
-          + Asset hinzufügen
-        </button>
+      {/* --- TAB NAVIGATION --- */}
+      <div className="flex justify-between items-center mb-8 border-b border-slate-100">
+        <div className="flex gap-10">
+          {['assets', 'history'].map((tab) => (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`pb-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === tab ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              {tab === 'assets' ? 'Einzelwerte' : 'Aktivität'}
+              {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-full animate-in slide-in-from-left-2" />}
+            </button>
+          ))}
+        </div>
+        
+        {activeTab === 'assets' && (
+          <button onClick={() => setShowAddModal(true)} className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg mb-4 text-xs uppercase tracking-widest transition-all active:scale-95">
+            + Asset hinzufügen
+          </button>
+        )}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] uppercase font-black tracking-wider">
-              <tr>
-                <th className="px-6 py-4">Asset</th>
-                <th className="px-4 py-4 text-right">Menge</th>
-                <th className="px-4 py-4 text-right">Einstieg</th>
-                <th className="px-4 py-4 text-right">Marktwert</th>
-                <th className="px-4 py-4 text-right">Kurs</th>
-                <th className="px-6 py-4 text-right">G/V (%)</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50">
-              {isLoading ? (
+      {/* --- CONTENT BEDINGT RENDERN --- */}
+      {activeTab === 'assets' ? (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] uppercase font-black tracking-wider">
                 <tr>
-                  <td colSpan="6" className="py-20 text-center text-slate-400 font-medium animate-pulse">Aktualisiere Daten...</td>
+                  <th className="px-6 py-4">Asset</th>
+                  <th className="px-4 py-4 text-right">Menge</th>
+                  <th className="px-4 py-4 text-right">Einstieg</th>
+                  <th className="px-4 py-4 text-right">Marktwert</th>
+                  <th className="px-6 py-4 text-right">G/V (%)</th>
                 </tr>
-              ) : portfolioItems.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="py-20 text-center text-slate-400 font-medium">Noch keine Assets in diesem Portfolio.</td>
-                </tr>
-              ) : (
-                portfolioItems.map((item) => {
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {portfolioItems.map((item) => {
                   const qty = parseFloat(item.quantity || 0);
-                  const avgCost = parseFloat(item.avg_cost_price || 0);
-                  const currentPrice = parseFloat(item.asset?.current_price || 0);
-                  
-                  const entryValue = qty * avgCost;
-                  const marketValue = qty * currentPrice;
-                  const profitLoss = marketValue - entryValue;
-                  const profitLossPct = entryValue > 0 ? (profitLoss / entryValue) * 100 : 0;
-
-                  let rowColorClass = 'text-slate-900';
-                  if (profitLoss > 0.001) rowColorClass = 'text-emerald-500';
-                  if (profitLoss < -0.001) rowColorClass = 'text-rose-500';
+                  const marketVal = qty * parseFloat(item.asset?.current_price || 0);
+                  const entryVal = qty * parseFloat(item.avg_cost_price || 0);
+                  const diff = marketVal - entryVal;
 
                   return (
                     <tr key={item.id} onClick={() => setSelectedItemId(item.id)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
                       <td className="px-6 py-5">
-                        <div className="font-black text-slate-900 group-hover:text-indigo-600 transition-colors">
-                          {item.asset?.symbol}
-                        </div>
-                        <div className="text-[10px] text-slate-400 font-bold truncate max-w-[150px]">
-                          {item.asset?.name}
-                        </div>
+                        <div className="font-black text-slate-900 group-hover:text-indigo-600">{item.asset?.symbol}</div>
+                        <div className="text-[10px] text-slate-400 font-bold">{item.asset?.name}</div>
                       </td>
-                      <td className="px-4 py-5 tabular-nums text-right font-medium text-slate-600">
-                        {qty.toLocaleString()}
-                      </td>
-                      <td className="px-4 py-5 tabular-nums text-right text-slate-500 font-medium text-xs">
-                        {formatCurrency(entryValue, portfolioCurrency)}
-                      </td>
-                      <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">
-                        {formatCurrency(marketValue, portfolioCurrency)}
-                      </td>
-                      <td className="px-4 py-5 tabular-nums text-right text-[10px] text-slate-400 font-bold">
-                        {formatCurrency(currentPrice, portfolioCurrency)}
-                      </td>
-                      <td className={`px-6 py-5 tabular-nums text-right font-black ${rowColorClass}`}>
-                        <div className="text-sm">
-                          {profitLoss > 0.001 ? '+' : ''}{formatCurrency(profitLoss, portfolioCurrency)}
-                        </div>
-                        <div className="text-[10px] opacity-80">
-                          {profitLoss > 0.001 ? '+' : ''}{profitLossPct.toFixed(2)}%
-                        </div>
+                      <td className="px-4 py-5 tabular-nums text-right font-medium text-slate-600">{qty.toLocaleString()}</td>
+                      <td className="px-4 py-5 tabular-nums text-right text-slate-500 text-xs">{formatCurrency(entryVal, portfolioCurrency)}</td>
+                      <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">{formatCurrency(marketVal, portfolioCurrency)}</td>
+                      <td className={`px-6 py-5 tabular-nums text-right font-black ${diff >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                        <div className="text-sm">{formatCurrency(diff, portfolioCurrency)}</div>
+                        <div className="text-[10px] opacity-80">{(entryVal > 0 ? (diff/entryVal)*100 : 0).toFixed(2)}%</div>
                       </td>
                     </tr>
                   );
-                })
-              )}
-            </tbody>
-          </table>
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      ) : (
+        <TransactionHistoryTable portfolioId={portfolioId} portfolioCurrency={portfolioCurrency} />
+      )}
 
       {showAddModal && (
-        <AddAssetModal 
-          portfolioId={portfolioId}
-          portfolioCurrency={portfolioCurrency}
-          onClose={() => setShowAddModal(false)} 
-          onRefresh={fetchDetails} 
-        />
+        <AddAssetModal portfolioId={portfolioId} portfolioCurrency={portfolioCurrency} onClose={() => setShowAddModal(false)} onRefresh={fetchDetails} />
       )}
     </div>
   );
