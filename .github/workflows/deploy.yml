@@ -29,6 +29,8 @@ jobs:
         with:
           context: ./backend
           push: true
+          build-args: |
+            VITE_API_URL=http://192.168.178.45:8000/api/v1
           tags: |
             ghcr.io/sinnaj004/portfolio-backend:latest
             ghcr.io/sinnaj004/portfolio-backend:${{ github.ref_name }}
