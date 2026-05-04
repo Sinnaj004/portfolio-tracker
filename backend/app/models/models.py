@@ -42,7 +42,8 @@ class Asset(Base):
     asset_type = Column(String)
     isin = Column(String, unique=True, index=True, nullable=True)
     currency = Column(String, default="USD")
-    # Geändert: timezone=True
+    country = Column(String, nullable=False)
+    sector = Column(String, nullable=False)
     last_api_update = Column(DateTime(timezone=True), nullable=True)
 
     prices = relationship("AssetPrice", back_populates="asset", cascade="all, delete-orphan")
@@ -56,7 +57,7 @@ class Asset(Base):
 class PortfolioItem(Base):
     __tablename__ = "portfolio_items"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    portfolio_id = Column(UUID(as_uuid=True), ForeignKey("portfolios.id"))
+    portfolio_id = Column(UUID(as_uuid=True), ForeignKey("portfolios.id", ondelete="CASCADE"))
     asset_id = Column(UUID(as_uuid=True), ForeignKey("assets.id"))
     quantity = Column(Numeric(precision=18, scale=8), nullable=False)
     avg_cost_price = Column(Numeric(precision=18, scale=4))

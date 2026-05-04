@@ -3,7 +3,8 @@ import { formatCurrency } from '../utils/formatters';
 import AddAssetModal from '../components/modals/AddAssetModal';
 import PortfolioItemDetail from './PortfolioItemDetail';
 import Portfoliochart_ApexChart from '../components/charts/Portfoliochart_ApexChart';
-import TransactionHistoryTable from '../components/PortfolioDetail/TransactionHistoryTable'; // Die neue Komponente
+import TransactionHistoryTable from '../components/PortfolioDetail/TransactionHistoryTable';
+import PortfolioAnalysis from '../components/PortfolioDetail/PortfolioAnalyses'; 
 
 export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack }) {
   const [portfolioItems, setPortfolioItems] = useState([]);
@@ -13,7 +14,9 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
   const [showAddModal, setShowAddModal] = useState(false);
   const [toast, setToast] = useState(null);
   const [days, setDays] = useState(30);
-  const [activeTab, setActiveTab] = useState('assets'); // Tab-Steuerung: 'assets' oder 'history'
+  
+  // ERWEITERTE TAB-LOGIK
+  const [activeTab, setActiveTab] = useState('assets'); // 'assets', 'history', 'analysis'
 
   const fetchDetails = async () => {
     const token = localStorage.getItem('token');
@@ -21,7 +24,6 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
 
     try {
       setIsLoading(true);
-      // 1. Assets laden
       const itemsRes = await fetch(`${apiUrl}/portfolio_item/${portfolioId}`, {
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
       });
@@ -32,7 +34,6 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
       items.sort((a, b) => (a.asset?.symbol || "").localeCompare(b.asset?.symbol || ""));
       setPortfolioItems(items);
 
-      // 2. Performance-Snapshots laden
       const perfRes = await fetch(`${apiUrl}/portfolio/${portfolioId}/performance?days=${days}`, {
         headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" }
       });
@@ -57,7 +58,6 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
     setTimeout(() => setToast(null), 3000);
   };
 
-  // Berechnungen für die Header-Metriken
   const totals = portfolioItems.reduce((acc, item) => {
     const qty = parseFloat(item.quantity || 0);
     const avgCost = parseFloat(item.avg_cost_price || 0);
@@ -98,7 +98,7 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
         <span>←</span> Zurück zur Übersicht
       </button>
 
-      {/* --- CHART SECTION --- */}
+      {/* --- CHART SECTION (Immer sichtbar) --- */}
       <div className="bg-white rounded-3xl p-8 shadow-sm border border-slate-200 mb-8">
         <div className="flex justify-between items-start mb-8">
           <div>
@@ -122,7 +122,6 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
           )}
         </div>
         
-        {/* Metriken */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-end border-t border-slate-100 pt-8">
           <div>
             <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Depotwert</span>
@@ -147,14 +146,18 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
       {/* --- TAB NAVIGATION --- */}
       <div className="flex justify-between items-center mb-8 border-b border-slate-100">
         <div className="flex gap-10">
-          {['assets', 'history'].map((tab) => (
+          {[
+            { id: 'assets', label: 'Einzelwerte' },
+            { id: 'history', label: 'Aktivität' },
+            { id: 'analysis', label: 'Diversifikation' }
+          ].map((tab) => (
             <button 
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`pb-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === tab ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`pb-4 text-xs font-black uppercase tracking-widest transition-all relative ${activeTab === tab.id ? 'text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
             >
-              {tab === 'assets' ? 'Einzelwerte' : 'Aktivität'}
-              {activeTab === tab && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-full animate-in slide-in-from-left-2" />}
+              {tab.label}
+              {activeTab === tab.id && <div className="absolute bottom-0 left-0 w-full h-1 bg-indigo-600 rounded-full animate-in slide-in-from-left-2" />}
             </button>
           ))}
         </div>
@@ -167,49 +170,64 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
       </div>
 
       {/* --- CONTENT BEDINGT RENDERN --- */}
-      {activeTab === 'assets' ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] uppercase font-black tracking-wider">
-                <tr>
-                  <th className="px-6 py-4">Asset</th>
-                  <th className="px-4 py-4 text-right">Menge</th>
-                  <th className="px-4 py-4 text-right">Einstieg</th>
-                  <th className="px-4 py-4 text-right">Marktwert</th>
-                  <th className="px-6 py-4 text-right">G/V (%)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {portfolioItems.map((item) => {
-                  const qty = parseFloat(item.quantity || 0);
-                  const marketVal = qty * parseFloat(item.asset?.current_price || 0);
-                  const entryVal = qty * parseFloat(item.avg_cost_price || 0);
-                  const diff = marketVal - entryVal;
+      <div className="transition-all duration-300">
+        {activeTab === 'assets' && (
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden animate-in fade-in slide-in-from-bottom-2">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead className="bg-slate-50 border-b border-slate-100 text-slate-400 text-[10px] uppercase font-black tracking-wider">
+                  <tr>
+                    <th className="px-6 py-4">Asset</th>
+                    <th className="px-4 py-4 text-right">Menge</th>
+                    <th className="px-4 py-4 text-right">Einstieg</th>
+                    <th className="px-4 py-4 text-right">Marktwert</th>
+                    <th className="px-6 py-4 text-right">G/V (%)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {portfolioItems.map((item) => {
+                    const qty = parseFloat(item.quantity || 0);
+                    const marketVal = qty * parseFloat(item.asset?.current_price || 0);
+                    const entryVal = qty * parseFloat(item.avg_cost_price || 0);
+                    const diff = marketVal - entryVal;
 
-                  return (
-                    <tr key={item.id} onClick={() => setSelectedItemId(item.id)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
-                      <td className="px-6 py-5">
-                        <div className="font-black text-slate-900 group-hover:text-indigo-600">{item.asset?.symbol}</div>
-                        <div className="text-[10px] text-slate-400 font-bold">{item.asset?.name}</div>
-                      </td>
-                      <td className="px-4 py-5 tabular-nums text-right font-medium text-slate-600">{qty.toLocaleString()}</td>
-                      <td className="px-4 py-5 tabular-nums text-right text-slate-500 text-xs">{formatCurrency(entryVal, portfolioCurrency)}</td>
-                      <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">{formatCurrency(marketVal, portfolioCurrency)}</td>
-                      <td className={`px-6 py-5 tabular-nums text-right font-black ${diff >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                        <div className="text-sm">{formatCurrency(diff, portfolioCurrency)}</div>
-                        <div className="text-[10px] opacity-80">{(entryVal > 0 ? (diff/entryVal)*100 : 0).toFixed(2)}%</div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                    return (
+                      <tr key={item.id} onClick={() => setSelectedItemId(item.id)} className="hover:bg-slate-50/50 transition-colors cursor-pointer group">
+                        <td className="px-6 py-5">
+                          <div className="font-black text-slate-900 group-hover:text-indigo-600">{item.asset?.symbol}</div>
+                          <div className="text-[10px] text-slate-400 font-bold">{item.asset?.name}</div>
+                        </td>
+                        <td className="px-4 py-5 tabular-nums text-right font-medium text-slate-600">{qty.toLocaleString()}</td>
+                        <td className="px-4 py-5 tabular-nums text-right text-slate-500 text-xs">{formatCurrency(entryVal, portfolioCurrency)}</td>
+                        <td className="px-4 py-5 tabular-nums text-right font-black text-slate-900">{formatCurrency(marketVal, portfolioCurrency)}</td>
+                        <td className={`px-6 py-5 tabular-nums text-right font-black ${diff >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                          <div className="text-sm">{formatCurrency(diff, portfolioCurrency)}</div>
+                          <div className="text-[10px] opacity-80">{(entryVal > 0 ? (diff/entryVal)*100 : 0).toFixed(2)}%</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      ) : (
-        <TransactionHistoryTable portfolioId={portfolioId} portfolioCurrency={portfolioCurrency} />
-      )}
+        )}
+
+        {activeTab === 'history' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2">
+            <TransactionHistoryTable portfolioId={portfolioId} portfolioCurrency={portfolioCurrency} />
+          </div>
+        )}
+
+        {activeTab === 'analysis' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2">
+            <PortfolioAnalysis 
+              portfolioItems={portfolioItems} 
+              portfolioCurrency={portfolioCurrency} 
+            />
+          </div>
+        )}
+      </div>
 
       {showAddModal && (
         <AddAssetModal portfolioId={portfolioId} portfolioCurrency={portfolioCurrency} onClose={() => setShowAddModal(false)} onRefresh={fetchDetails} />

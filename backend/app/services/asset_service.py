@@ -130,6 +130,8 @@ class AssetService:
                     "currency": info.get("currency", "USD").upper(),
                     "isin": info.get("isin") or (query if len(query) == 12 else None),
                     "current_price": 0.0,
+                    "country": info.get("country", ""),
+                    "sector": info.get("sector"),
                     "source": "yfinance"
                 }
         except Exception as e:

@@ -13,6 +13,8 @@ class AssetShort(BaseModel):
     name: str
     isin: Optional[str] = None
     asset_type: str
+    country: str
+    sector: str
     current_price: Optional[Decimal] = None
     last_api_update: Optional[datetime] = None
     

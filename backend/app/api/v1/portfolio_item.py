@@ -12,6 +12,7 @@ from ...services.asset_service import asset_service
 
 router = APIRouter()
 
+
 @router.post("/{portfolio_id}/items", response_model=PortfolioItemOut, status_code=status.HTTP_201_CREATED)
 def add_portfolio_item(
         portfolio_id: UUID,
@@ -28,34 +29,61 @@ def add_portfolio_item(
     if not portfolio:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio nicht gefunden")
 
-    # 2. Asset Logik
+    # 2. Asset Logik: Suchen & Mergen
     asset = None
+
+    # Suche 1: Über ISIN (falls im Request vorhanden)
     if item_in.isin:
         asset = db.query(Asset).filter(Asset.isin == item_in.isin).first()
+
+    # Suche 2: Über Symbol (falls noch nichts gefunden)
     if not asset and item_in.symbol:
         asset = db.query(Asset).filter(Asset.symbol == item_in.symbol.upper()).first()
 
     if not asset:
+        # Falls in DB nichts gefunden: Externe API-Suche (Yahoo/AlphaVantage)
         external_data = asset_service.search_external_asset(symbol=item_in.symbol, isin=item_in.isin)
         if not external_data or not external_data.get("name"):
-            raise HTTPException(status_code=404, detail="Asset nicht gefunden.")
+            raise HTTPException(status_code=404, detail="Asset weder lokal noch extern gefunden.")
 
-        asset = Asset(
-            symbol=external_data["symbol"].upper(),
-            name=external_data["name"],
-            asset_type=external_data.get("asset_type") or "stock",
-            currency=(external_data.get("currency") or "USD").upper(),
-            isin=external_data.get("isin") or item_in.isin,
-            last_api_update=datetime.now(timezone.utc) # Geändert auf UTC
-        )
-        db.add(asset)
-        db.flush()
-        if external_data.get("current_price"):
-            db.add(AssetPrice(
-                asset_id=asset.id,
-                price=external_data["current_price"],
-                timestamp=datetime.now(timezone.utc) # Geändert auf UTC
-            ))
+        # Sicherheits-Check: Existiert das extern gefundene Symbol vielleicht DOCH schon?
+        # (Verhindert UniqueViolation, wenn man via ISIN gesucht hat, das Symbol aber ohne ISIN in DB liegt)
+        asset = db.query(Asset).filter(Asset.symbol == external_data["symbol"].upper()).first()
+
+        if asset:
+            # Bestehendes Asset mit neuen externen Daten anreichern
+            if not asset.isin: asset.isin = external_data.get("isin") or item_in.isin
+            if not asset.country: asset.country = external_data.get("country")
+            if not asset.sector: asset.sector = external_data.get("sector")
+        else:
+            # Komplett neu anlegen
+            asset = Asset(
+                symbol=external_data["symbol"].upper(),
+                name=external_data["name"],
+                asset_type=external_data.get("asset_type") or "stock",
+                currency=(external_data.get("currency") or "USD").upper(),
+                isin=external_data.get("isin") or item_in.isin,
+                country=external_data.get("country"),
+                sector=external_data.get("sector"),
+                last_api_update=datetime.now(timezone.utc)
+            )
+            db.add(asset)
+            db.flush()  # ID generieren
+
+            # Initialen Preis speichern, falls vorhanden
+            if external_data.get("current_price"):
+                db.add(AssetPrice(
+                    asset_id=asset.id,
+                    price=Decimal(str(external_data["current_price"])),
+                    timestamp=datetime.now(timezone.utc)
+                ))
+    else:
+        # Asset wurde direkt in DB gefunden -> Prüfen ob ISIN nachgepflegt werden kann
+        if not asset.isin and item_in.isin:
+            asset.isin = item_in.isin
+
+    # Wichtig: Flush stellt sicher, dass 'asset.id' für die Transaction bereit ist
+    db.flush()
 
     # --- PRÄZISE BERECHNUNGEN MIT DECIMAL ---
     input_qty = Decimal(str(item_in.quantity))
@@ -63,8 +91,11 @@ def add_portfolio_item(
 
     asset_curr = (asset.currency or "EUR").upper()
     portfolio_curr = (portfolio.currency or "EUR").upper()
+
+    # Wechselkurs holen (1 Einheit Asset-Währung = X Einheiten Portfolio-Währung)
     exchange_rate = Decimal(str(asset_service.get_exchange_rate(asset_curr, portfolio_curr)))
 
+    # Preis in Asset-Währung für das Transaction-Log umrechnen
     purchase_price_asset_curr = input_price_portfolio_curr / exchange_rate
 
     # 3. Transaktion loggen
@@ -78,11 +109,11 @@ def add_portfolio_item(
         total_amount=input_qty * purchase_price_asset_curr,
         currency=asset_curr,
         exchange_rate=exchange_rate,
-        transaction_date=datetime.now(timezone.utc) # Geändert auf UTC
+        transaction_date=datetime.now(timezone.utc)
     )
     db.add(new_transaction)
 
-    # 4. PortfolioItem aktualisieren
+    # 4. PortfolioItem (Bestand) aktualisieren oder erstellen
     db_item = db.query(PortfolioItem).filter(
         PortfolioItem.portfolio_id == portfolio_id,
         PortfolioItem.asset_id == asset.id
@@ -93,20 +124,22 @@ def add_portfolio_item(
             portfolio_id=portfolio_id,
             asset_id=asset.id,
             quantity=input_qty,
-            avg_cost_price=input_price_portfolio_curr,
+            avg_cost_price=input_price_portfolio_curr,  # In Portfolio-Währung
             avg_exchange_rate=exchange_rate
         )
         db.add(db_item)
     else:
+        # Bestands-Update mit gewichtetem Durchschnitt (Mixed Lot)
         current_qty = Decimal(str(db_item.quantity))
         current_avg_price_port_curr = Decimal(str(db_item.avg_cost_price))
         new_total_quantity = current_qty + input_qty
 
-        total_cost_old_port_curr = current_qty * current_avg_price_port_curr
-        total_cost_new_port_curr = input_qty * input_price_portfolio_curr
+        # Neuer Durchschnittspreis (Portfolio-Währung)
+        total_cost_old = current_qty * current_avg_price_port_curr
+        total_cost_new = input_qty * input_price_portfolio_curr
+        db_item.avg_cost_price = (total_cost_old + total_cost_new) / new_total_quantity
 
-        db_item.avg_cost_price = (total_cost_old_port_curr + total_cost_new_port_curr) / new_total_quantity
-
+        # Neuer Durchschnitts-Wechselkurs
         current_avg_fx = Decimal(str(db_item.avg_exchange_rate or exchange_rate))
         total_fx_old = current_qty * current_avg_fx
         total_fx_new = input_qty * exchange_rate
@@ -206,6 +239,7 @@ def get_portfolio_item(
 @router.delete("/{portfolio_id}/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_portfolio_item(portfolio_id: UUID, item_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     item = db.query(PortfolioItem).filter(PortfolioItem.id == item_id, Portfolio.id == portfolio_id, Portfolio.user_id == current_user.id).first()
+    transaction = db.query(Transaction).filter(Transaction.portfolio_id == portfolio_id, Transaction.asset_id == item.asset_id).delete()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Portfolio item not found")
 

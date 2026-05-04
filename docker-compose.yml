@@ -67,23 +67,6 @@ services:
       - portfolio_network
     command: npm run dev -- --host 0.0.0.0
 
-  worker:
-    build: ./backend
-    container_name: portfolio_worker
-    restart: always
-    depends_on:
-      - backend
-      - db
-    env_file:
-      - .env
-    volumes:
-      - ./backend:/app
-    networks:
-      - portfolio_network
-      -
-    # Der Worker startet ein spezielles Skript, das die Zeitsteuerung übernimmt
-    command: python app/worker.py
-
 # --- NEU: Explizite Netzwerk-Definition ---
 networks:
   portfolio_network:
