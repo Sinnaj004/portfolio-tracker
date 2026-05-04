@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   # --- Datenbank: TimescaleDB ---
   db:
@@ -10,7 +12,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - db_data:/var/lib/postgresql/data
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+      # Hinweis: Da wir die Initialisierung ins Backend verschoben haben,
+      # ist das init.sql Volume hier optional geworden.
     ports:
       - "5432:5432"
     networks:
@@ -28,10 +31,12 @@ services:
 
   # --- Backend: FastAPI ---
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      # Wenn du hier auch auf Multi-Stage umstellst,
+      # könntest du hier 'target: development' ergänzen.
     container_name: portfolio_backend
     restart: always
-    # --- NEU: DNS-Server hinzufügen ---
     dns:
       - 8.8.8.8
       - 1.1.1.1
@@ -52,22 +57,24 @@ services:
 
   # --- Frontend: React (Vite) ---
   frontend:
-    build: ./portfolio-frontend
+    build:
+      context: ./portfolio-frontend
+      target: development # <--- NUTZT DEINE NEUE DEV-STAGE
     container_name: portfolio_frontend
     ports:
       - "5173:5173"
     volumes:
       - ./portfolio-frontend:/app
-      - /app/node_modules
+      - /app/node_modules # Verhindert, dass lokale Module das Image überschreiben
     environment:
       - VITE_API_URL=http://192.168.178.42:8000/api/v1
     depends_on:
       - backend
     networks:
       - portfolio_network
+    # Der Befehl bleibt hier für Dev aktiv:
     command: npm run dev -- --host 0.0.0.0
 
-# --- NEU: Explizite Netzwerk-Definition ---
 networks:
   portfolio_network:
     driver: bridge

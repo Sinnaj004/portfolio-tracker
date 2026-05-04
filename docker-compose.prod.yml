@@ -1,0 +1,61 @@
+version: '3.8'
+
+services:
+  # --- Datenbank: TimescaleDB ---
+  db:
+    image: timescale/timescaledb:latest-pg16
+    container_name: portfolio_db
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Nur noch die reinen Daten sichern
+      - /volume1/Jannis/PortfolioTracker/db_data:/var/lib/postgresql/data
+    networks:
+      - portfolio_network
+
+  # --- Cache: Redis ---
+  redis:
+    image: redis:alpine
+    container_name: portfolio_redis
+    restart: always
+    networks:
+      - portfolio_network
+
+  # --- Backend: FastAPI ---
+  backend:
+    # Achte darauf, dass ${GITHUB_USER} in deiner .env auf dem NAS definiert ist
+    image: ghcr.io/${GITHUB_USER}/portfolio-backend:latest
+    container_name: portfolio_backend
+    restart: always
+    depends_on:
+      - db
+      - redis
+    # Pfad zur .env auf dem NAS
+    env_file:
+      - /volume1/Jannis/PortfolioTracker/.env
+    ports:
+      - "8000:8000"
+    networks:
+      - portfolio_network
+    # In Produktion kein 'command' mit --reload nötig, da im Dockerfile definiert
+
+  # --- Frontend: Nginx ---
+  frontend:
+    image: ghcr.io/${GITHUB_USER}/portfolio-frontend:latest
+    container_name: portfolio_frontend
+    restart: always
+    ports:
+      - "3000:80" # NAS Port 3000 auf internen Nginx Port 80
+    environment:
+      - VITE_API_URL=${API_URL_PROD}
+    depends_on:
+      - backend
+    networks:
+      - portfolio_network
+
+networks:
+  portfolio_network:
+    driver: bridge
