@@ -19,7 +19,7 @@ export default function Login({ onLoginSuccess, onSwitchToRegister }) {
     try {
       // NUTZT JETZT DIE DYNAMISCHE URL AUS DER DOCKER-COMPOSE
       // Wichtig: Wieder Backticks (``) verwenden!
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/login`, {
+      const response = await fetch(`/api/v1/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",

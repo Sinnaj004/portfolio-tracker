@@ -9,14 +9,13 @@ export default function TransactionHistoryTable({ portfolioId, portfolioCurrency
   useEffect(() => {
     const fetchTransactions = async () => {
       const token = localStorage.getItem('token');
-      const apiUrl = import.meta.env.VITE_API_URL;
 
       try {
         setIsLoading(true);
         setError(null);
         
         // Einfacher GET-Request ohne Limit/Offset Parameter
-        const res = await fetch(`${apiUrl}/portfolio/${portfolioId}/transactions`, {
+        const res = await fetch(`/api/v1/portfolio/${portfolioId}/transactions`, {
           headers: { 
             "Authorization": `Bearer ${token}`, 
             "Content-Type": "application/json" 

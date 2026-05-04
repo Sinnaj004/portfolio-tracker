@@ -22,7 +22,7 @@ export default function Dashboard({ onLogout }) {
     setIsLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/dashboard/summary`, {
+      const response = await fetch(`/api/v1/dashboard/summary`, {
         method: "GET",
         headers: {
           "Authorization": `Bearer ${token}`,
@@ -49,7 +49,7 @@ export default function Dashboard({ onLogout }) {
     setIsDeleting(true);
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio/${portfolioToDelete.id}`, {
+      const response = await fetch(`/api/v1/portfolio/${portfolioToDelete.id}`, {
         method: "DELETE",
         headers: { "Authorization": `Bearer ${token}` }
       });

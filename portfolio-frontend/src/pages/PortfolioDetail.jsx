@@ -20,7 +20,7 @@ export default function PortfolioDetail({ portfolioId, portfolioCurrency, onBack
 
   const fetchDetails = async () => {
     const token = localStorage.getItem('token');
-    const apiUrl = import.meta.env.VITE_API_URL;
+    const apiUrl = `/api/v1`;
 
     try {
       setIsLoading(true);

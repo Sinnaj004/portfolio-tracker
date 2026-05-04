@@ -24,7 +24,7 @@ export default function CreatePortfolioModal({ onClose, onRefresh }) {
     const token = localStorage.getItem('token');
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio/`, {
+      const response = await fetch(`/api/v1/portfolio/`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,

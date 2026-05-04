@@ -29,7 +29,7 @@ export default function AddAssetModal({ portfolioId, portfolioCurrency, onClose,
     };
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items`, {
+      const response = await fetch(`/api/v1/portfolio_item/${portfolioId}/items`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${token}`,

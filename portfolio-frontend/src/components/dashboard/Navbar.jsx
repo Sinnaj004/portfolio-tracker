@@ -9,7 +9,7 @@ export default function Navbar({ onLogout }) {
       if (!token) return;
 
       try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/me`, {
+        const response = await fetch(`/api/v1/auth/me`, {
           headers: { "Authorization": `Bearer ${token}` }
         });
         if (response.ok) {

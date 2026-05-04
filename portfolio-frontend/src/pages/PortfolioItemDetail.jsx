@@ -38,7 +38,7 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
     setIsActionLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items/${itemId}/sell`, { 
+      const response = await fetch(`/api/v1/portfolio_item/${portfolioId}/items/${itemId}/sell`, { 
         method: 'POST',
         headers: { 
           "Authorization": `Bearer ${token}`, 
