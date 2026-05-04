@@ -49,8 +49,6 @@ services:
     restart: always
     ports:
       - "3000:80" # NAS Port 3000 auf internen Nginx Port 80
-    environment:
-      - VITE_API_URL=${API_URL_PROD}
     depends_on:
       - backend
     networks:

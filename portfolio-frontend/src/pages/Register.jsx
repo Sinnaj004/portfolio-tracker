@@ -28,9 +28,7 @@ export default function Register({ onSwitchToLogin }) {
     setIsLoading(true);
 
     try {
-      // NUTZT JETZT DIE IP AUS DER DOCKER-COMPOSE
-      // Wichtig: /auth/register wird an http://192.168.178.42:8000/api/v1 angehängt
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
+      const response = await fetch(`/api/v1/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, email, password }),
