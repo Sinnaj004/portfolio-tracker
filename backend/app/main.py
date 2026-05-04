@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
     # damit er SOFORT beim Start einmal läuft zum Testen!
     scheduler.add_job(
         scheduled_portfolio_snapshots,
-        trigger=CronTrigger(hour=10, minute=25),  # Deine Zielzeit
+        trigger=CronTrigger(hour=10, minute=00),  # Deine Zielzeit
         next_run_time=datetime.now(timezone.utc),  # <--- TEST-TRIGGER
         id="daily_snapshot_task"
     )

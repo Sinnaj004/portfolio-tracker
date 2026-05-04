@@ -123,6 +123,20 @@ class AssetService:
             info = ticker.info
 
             if info and 'symbol' in info:
+
+                raw_type = info.get("quoteType", "EQUITY").upper()
+                raw_sector = info.get("sector")
+
+                # Prioritäten-Check für den Sektor
+                if raw_type == "COMMODITY":
+                    mapped_sector = "Commodities"
+                elif raw_type in ["CRYPTOCURRENCY", "COIN"]:
+                    mapped_sector = "Cryptocurrencies"
+                elif raw_sector:
+                    mapped_sector = raw_sector
+                else:
+                    mapped_sector = "Other"
+
                 return {
                     "symbol": info.get("symbol").upper(),
                     "name": info.get("longName") or info.get("shortName"),
@@ -131,7 +145,7 @@ class AssetService:
                     "isin": info.get("isin") or (query if len(query) == 12 else None),
                     "current_price": 0.0,
                     "country": info.get("country", ""),
-                    "sector": info.get("sector"),
+                    "sector": mapped_sector,
                     "source": "yfinance"
                 }
         except Exception as e:
