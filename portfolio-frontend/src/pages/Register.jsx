@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import apiClient from '../api/axios';
 
 export default function Register({ onSwitchToLogin }) {
   const [username, setUsername] = useState('');
@@ -12,45 +13,45 @@ export default function Register({ onSwitchToLogin }) {
     e.preventDefault();
     setError('');
 
-    // 1. E-Mail Validierung
+    // Validierungen
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-        setError('Bitte gib eine gültige E-Mail-Adresse an (z.B. name@beispiel.de).');
+        setError('Bitte gib eine gültige E-Mail-Adresse an.');
         return; 
     }
 
-    // 2. Passwort Validierung
     if (password.length < 6) {
-        setError('Das Passwort ist zu kurz. Es muss mindestens 6 Zeichen lang sein.');
+        setError('Das Passwort muss mindestens 6 Zeichen lang sein.');
         return;
     }
 
     setIsLoading(true);
 
     try {
-      // NUTZT JETZT DIE IP AUS DER DOCKER-COMPOSE
-      // Wichtig: /auth/register wird an http://192.168.178.42:8000/api/v1 angehängt
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/register`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password }),
+      // 2. Nutze den apiClient statt fetch
+      // Du musst nur noch den relativen Pfad angeben!
+      const response = await apiClient.post('/auth/register', {
+        username,
+        email,
+        password
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || 'Registrierung fehlgeschlagen.');
-      }
-
+      // Axios wirft bei Fehlern (4xx, 5xx) automatisch eine Exception,
+      // daher sparen wir uns das "if (!response.ok)"
       setSuccess(true);
       setTimeout(() => onSwitchToLogin(), 2000);
 
     } catch (err) {
-      setError(err.message);
+      // 3. Fehlerbehandlung für Axios
+      // Falls das Backend eine Fehlermeldung schickt, steht sie meist in err.response.data
+      const message = err.response?.data?.detail || 'Registrierung fehlgeschlagen.';
+      setError(message);
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ... (Rest des UI-Codes bleibt identisch)
   if (success) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
@@ -76,7 +77,7 @@ export default function Register({ onSwitchToLogin }) {
         </div>
 
         {error && (
-          <div className="bg-rose-50 text-rose-600 p-4 rounded-xl mb-6 text-sm font-semibold border border-rose-100 animate-pulse">
+          <div className="bg-rose-50 text-rose-600 p-4 rounded-xl mb-6 text-sm font-semibold border border-rose-100">
             {error}
           </div>
         )}
