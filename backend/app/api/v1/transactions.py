@@ -38,6 +38,9 @@ def get_portfolio_transactions(
         transaction.total_amount = transaction.total_amount * transaction.exchange_rate
         transaction.price_per_unit *= transaction.exchange_rate
 
+        if transaction.realized_pnl:
+            transaction.realized_pnl = transaction.realized_pnl  * transaction.exchange_rate
+
     # Mapping der Asset-Informationen in das Schema
     for tx in transactions:
         tx.asset_name = tx.asset.name

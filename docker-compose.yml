@@ -12,8 +12,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - db_data:/var/lib/postgresql/data
-      # Hinweis: Da wir die Initialisierung ins Backend verschoben haben,
-      # ist das init.sql Volume hier optional geworden.
     ports:
       - "5432:5432"
     networks:
@@ -33,8 +31,6 @@ services:
   backend:
     build:
       context: ./backend
-      # Wenn du hier auch auf Multi-Stage umstellst,
-      # könntest du hier 'target: development' ergänzen.
     container_name: portfolio_backend
     restart: always
     dns:
@@ -59,21 +55,35 @@ services:
   frontend:
     build:
       context: ./portfolio-frontend
-      target: development # <--- NUTZT DEINE NEUE DEV-STAGE
+      target: development
     container_name: portfolio_frontend
     ports:
       - "5173:5173"
     volumes:
       - ./portfolio-frontend:/app
-      - /app/node_modules # Verhindert, dass lokale Module das Image überschreiben
+      - /app/node_modules
     environment:
       - VITE_API_URL=http://192.168.178.42:8000/api/v1
     depends_on:
       - backend
     networks:
       - portfolio_network
-    # Der Befehl bleibt hier für Dev aktiv:
     command: npm run dev -- --host 0.0.0.0
+
+  # --- pgAdmin: DB Verwaltung ---
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: portfolio_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+    networks:
+      - portfolio_network
 
 networks:
   portfolio_network:

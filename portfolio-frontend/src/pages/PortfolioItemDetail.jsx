@@ -12,6 +12,9 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [sellSuccess, setSellSuccess] = useState(false);
 
+  // Einheitliche API-Basis-URL wie in PortfolioDetail
+  const apiUrl = `/api/v1`;
+
   useEffect(() => {
     fetchItem();
   }, [portfolioId, itemId]);
@@ -20,8 +23,11 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
     const token = localStorage.getItem('token');
     setIsLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items/${itemId}`, {
-        headers: { "Authorization": `Bearer ${token}` }
+      const response = await fetch(`${apiUrl}/portfolio_item/${portfolioId}/items/${itemId}`, {
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
       });
       if (!response.ok) throw new Error("Fehler beim Laden");
       const data = await response.json();
@@ -38,7 +44,7 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
     setIsActionLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`/api/v1/portfolio_item/${portfolioId}/items/${itemId}/sell`, { 
+      const response = await fetch(`${apiUrl}/portfolio_item/${portfolioId}/items/${itemId}/sell`, { 
         method: 'POST',
         headers: { 
           "Authorization": `Bearer ${token}`, 
@@ -51,15 +57,15 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
       });
 
       if (response.ok) {
-        // Wir rufen onBack für JEDEN erfolgreichen Verkauf auf
-        // Die Nachricht unterscheidet zwischen Teil- und Vollverkauf
+        // 204 No Content bedeutet meist, dass das Asset komplett weg ist
         const isFullSale = response.status === 204; 
-        
         onBack(isFullSale ? "Position vollständig verkauft" : "Teilverkauf erfolgreich verbucht");
+      } else {
+        throw new Error("Verkauf fehlgeschlagen");
       }
     } catch (err) { 
-      console.error(err); 
-      // Optional: Hier könntest du einen Fehler-Toast einbauen, falls der Verkauf fehlschlägt
+      console.error(err);
+      alert("Fehler beim Verarbeiten des Verkaufs."); 
     } finally { 
       setIsActionLoading(false); 
     }
@@ -69,9 +75,12 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
     setIsActionLoading(true);
     const token = localStorage.getItem('token');
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/portfolio_item/${portfolioId}/items/${itemId}`, { 
+      const response = await fetch(`${apiUrl}/portfolio_item/${portfolioId}/items/${itemId}`, { 
         method: 'DELETE',
-        headers: { "Authorization": `Bearer ${token}` } 
+        headers: { 
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        } 
       });
       if (response.status === 204 || response.ok) {
         onBack("Position erfolgreich gelöscht");
@@ -84,8 +93,8 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
     }
   };
 
-  if (isLoading) return <div className="p-20 text-center font-bold text-slate-500">Lade Daten...</div>;
-  if (!item) return <div className="p-20 text-center">Nicht gefunden.</div>;
+  if (isLoading) return <div className="p-20 text-center font-bold text-slate-500 animate-pulse">Lade Asset-Details...</div>;
+  if (!item) return <div className="p-20 text-center">Asset nicht gefunden.</div>;
 
   const qty = parseFloat(item.quantity);
   const avgPrice = parseFloat(item.avg_cost_price);
@@ -93,7 +102,7 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 animate-in slide-in-from-right duration-300 relative">
       
-        <style>{`
+      <style>{`
         input::-webkit-outer-spin-button,
         input::-webkit-inner-spin-button {
           -webkit-appearance: none;
@@ -103,13 +112,6 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
           -moz-appearance: textfield;
         }
       `}</style>
-      {/* SUCCESS NOTIFICATION */}
-      {sellSuccess && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[150] bg-slate-900 text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border-b-4 border-indigo-500 animate-in fade-in zoom-in duration-300">
-          <div className="w-6 h-6 bg-indigo-50 rounded-full flex items-center justify-center text-indigo-600 text-[10px] font-black">✓</div>
-          <span className="font-black uppercase tracking-widest text-xs">Teilverkauf verbucht</span>
-        </div>
-      )}
 
       {/* NAVIGATION & ACTIONS */}
       <div className="flex justify-between items-center mb-8">
@@ -121,13 +123,13 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
             onClick={() => setShowSellForm(!showSellForm)} 
             className={`px-5 py-2.5 rounded-xl font-bold uppercase text-[10px] tracking-widest transition-all ${showSellForm ? 'bg-amber-500 text-white shadow-lg shadow-amber-200' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'}`}
           >
-            {showSellForm ? 'Schließen' : 'Verkauf'}
+            {showSellForm ? 'Abbrechen' : 'Verkauf buchen'}
           </button>
           <button 
             onClick={() => setShowDeleteConfirm(true)} 
             className="bg-rose-50 text-rose-600 px-5 py-2.5 rounded-xl font-bold hover:bg-rose-100 uppercase text-[10px] tracking-widest transition-all"
           >
-            Löschen
+            Position Löschen
           </button>
         </div>
       </div>
@@ -142,24 +144,28 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
                 <input 
                   type="number" step="any" value={sellQuantity} 
                   onChange={(e) => setSellQuantity(e.target.value)} 
-                  placeholder={`MAX: ${qty.toFixed(2)}`} 
+                  placeholder={`Max: ${qty.toFixed(2)}`} 
                   className="w-full bg-white border-none rounded-2xl py-4 px-4 focus:ring-2 focus:ring-amber-500 font-bold shadow-inner" required 
                 />
               </div>
               <div className="relative">
                 <label className="block text-amber-800 text-[10px] font-black uppercase mb-2 ml-1 tracking-widest">
-                  Verkaufspreis (in {portfolioCurrency})
+                  Verkaufspreis (je Stück in {portfolioCurrency})
                 </label>
                 <input 
                   type="number" step="any" value={sellPrice} 
                   onChange={(e) => setSellPrice(e.target.value)} 
-                  placeholder="Marktwert nutzen" 
+                  placeholder="Aktuellen Preis nutzen" 
                   className="w-full bg-white border-none rounded-2xl py-4 px-4 focus:ring-2 focus:ring-amber-500 font-bold shadow-inner" 
                 />
                 <div className="absolute right-4 bottom-4 text-amber-600 font-black text-xs opacity-40">{portfolioCurrency}</div>
               </div>
             </div>
-            <button type="submit" disabled={isActionLoading} className="w-full bg-amber-500 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-amber-600 active:scale-95 transition-all shadow-lg shadow-amber-200">
+            <button 
+              type="submit" 
+              disabled={isActionLoading} 
+              className="w-full bg-amber-500 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-amber-600 active:scale-95 transition-all shadow-lg shadow-amber-200 disabled:opacity-50"
+            >
               {isActionLoading ? "Verbuche..." : "Verkauf bestätigen"}
             </button>
           </form>
@@ -173,9 +179,11 @@ export default function PortfolioItemDetail({ portfolioId, itemId, portfolioCurr
         <div className="relative z-10">
           <span className="text-indigo-600 font-black uppercase tracking-[0.2em] text-[10px] bg-indigo-50 px-3 py-1 rounded-full">Asset Details</span>
           <h2 className="text-4xl font-black text-slate-900 mt-4 tracking-tighter">{item.asset?.name}</h2>
-          <p className="text-slate-400 font-bold text-lg mb-8 tracking-widest">{item.asset?.symbol} | {item.asset?.isin}</p>
+          <p className="text-slate-400 font-bold text-lg mb-8 tracking-widest">
+            {item.asset?.symbol} {item.asset?.isin ? `| ${item.asset?.isin}` : ''}
+          </p>
 
-          <div className="grid grid-cols-2 gap-8 border-t border-slate-50 pt-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-slate-50 pt-8">
             <div>
               <p className="text-slate-400 text-[10px] font-black uppercase mb-1 tracking-widest">Aktueller Bestand</p>
               <p className="text-3xl font-black text-slate-800 tabular-nums">{qty.toLocaleString()}</p>
